@@ -13,7 +13,7 @@ plugins {
     // https://maven.architectury.dev/architectury-plugin/architectury-plugin.gradle.plugin/3.4.161/
     id "architectury-plugin" version "3.4.161"
     // https://maven.architectury.dev/dev/architectury/architectury-loom/1.9.428/
-    id "dev.architectury.loom" version "1.9.428" apply false
+    id "dev.architectury.loom" version "1.14.473" apply false
     id 'io.github.juuxel.loom-vineflower' version '1.11.0' apply false
     // Kotlin
     id "org.jetbrains.kotlin.jvm" version "2.0.0" apply false

@@ -37,8 +37,8 @@ dependencies {
     // TIS-3d
     modCompileOnly("maven.modrinth:tis3d:${tis3d_version}")
 
-    // CC-Tweaked
-    modCompileOnly("cc.tweaked:cc-tweaked-${minecraft_version}-common:${cc_tweaked_version}")
+    // CC-Tweaked — disabled for 1.21.11 probe (no 1.21.11 build exists)
+    //modCompileOnly("cc.tweaked:cc-tweaked-${minecraft_version}-common:${cc_tweaked_version}")
 
     // Dynmap
     modCompileOnly("maven.modrinth:dynmap:${dynmap_version}")
@@ -78,7 +78,8 @@ dependencies {
     modCompileOnly("com.github.iPortalTeam:ImmersivePortalsMod:${immptl_version}")
     // These older common-side compat coordinates were kept in 1.20.1, but do not resolve on 1.21.1.
     // Platform-specific compat remains under fabric/forge where available.
-    modCompileOnly("dev.ryanhcode.sable:sable-common-${minecraft_version}:${sable_version}")
+    // Sable compat — disabled for 1.21.11 probe (no 1.21.11 build exists)
+    //modCompileOnly("dev.ryanhcode.sable:sable-common-${minecraft_version}:${sable_version}")
 }
 
 architectury {
@@ -105,6 +106,9 @@ sourceSets {
             exclude "org/valkyrienskies/mod/mixin/feature/ai/node_evaluator/**"
             exclude "org/valkyrienskies/mod/mixin/feature/sculk/**"
             exclude "org/valkyrienskies/mod/mixin/mod_compat/alex_caves/**"
+            // 1.21.11 probe: exclude compat mixins whose target mods have no 1.21.11 build
+            exclude "org/valkyrienskies/mod/mixin/mod_compat/cc_tweaked/**"
+            exclude "org/valkyrienskies/mod/mixin/mod_compat/sable/**"
         }
         kotlin {
             exclude "org/valkyrienskies/mod/compat/hexcasting/**"

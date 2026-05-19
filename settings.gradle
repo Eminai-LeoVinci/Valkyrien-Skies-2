@@ -41,7 +41,9 @@ dependencyResolutionManagement {
 
 include("common")
 include("fabric")
-include("forge")
+// :forge subproject disabled for 1.21.11 port — only Fabric is the target.
+// NeoForge 21.1.x is for MC 1.21.1; would need a 1.21.11-compatible NeoForge to re-enable.
+//include("forge")
 
 try {
     def core = file("./vs-core")
