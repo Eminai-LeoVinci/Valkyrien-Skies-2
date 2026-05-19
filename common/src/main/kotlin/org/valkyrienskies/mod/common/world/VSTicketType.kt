@@ -1,8 +1,6 @@
 package org.valkyrienskies.mod.common.world
 
 import net.minecraft.server.level.TicketType
-import net.minecraft.world.level.ChunkPos
-import java.util.Comparator
 
 /**
  * Custom ticket type for ship chunks. Used with radius 0, giving ticket level 33 (FULL status).
@@ -17,8 +15,11 @@ import java.util.Comparator
  * all work at FULL status. Entity ticking and block ticking are not needed in the shipyard.
  */
 object VSTicketType {
+    // 1.21.11: TicketType is no longer generic and TicketType.create() is gone;
+    // use TicketType.register(name, timeout, flags) instead. We want chunks to load
+    // and simulate (block ticks/updates), so OR both flags.
     @JvmField
-    val SHIP_CHUNK: TicketType<ChunkPos> = TicketType.create(
-        "vs_ship_chunk", Comparator.comparingLong(ChunkPos::toLong)
+    val SHIP_CHUNK: TicketType = TicketType.register(
+        "vs_ship_chunk", TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING or TicketType.FLAG_SIMULATION
     )
 }

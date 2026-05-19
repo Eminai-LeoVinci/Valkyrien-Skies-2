@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.minecraft.commands.CommandSourceStack
@@ -17,7 +18,7 @@ object GetAirCommand {
     private const val AIR_VALUES_PRESSURE_MESSAGE = "command.valkyrienskies.air_values.pressure"
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
-        vs.then(literal("get-air").requires { it.hasPermission(VSGameConfig.SERVER.Commands.getAirValuesPerms)}
+        vs.then(literal("get-air").requires { it.hasOpPermission(VSGameConfig.SERVER.Commands.getAirValuesPerms)}
             .executes {
                 val aero = it.source.level.shipObjectWorld.aerodynamicUtils
                 val height = it.source.position.y

@@ -12,7 +12,7 @@ import net.minecraft.client.model.geom.builders.CubeDeformation
 import net.minecraft.client.model.geom.builders.CubeListBuilder
 import net.minecraft.client.model.geom.builders.LayerDefinition
 import net.minecraft.client.model.geom.builders.MeshDefinition
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.Mob
 import org.valkyrienskies.mod.common.ValkyrienSkiesMod
 
@@ -33,7 +33,7 @@ class VSPhysicsEntityModel<T : Mob>(root: ModelPart) :
     companion object {
         // This layer location should be baked with EntityRendererProvider.Context in the entity renderer and passed into this model's constructor
         val LAYER_LOCATION: ModelLayerLocation =
-            ModelLayerLocation(ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "test_sphere"), "main")
+            ModelLayerLocation(Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "test_sphere"), "main")
 
         fun createBodyLayer(): LayerDefinition {
             val meshdefinition = MeshDefinition()

@@ -4,8 +4,8 @@ import com.mojang.blaze3d.vertex.PoseStack
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.entity.EntityRenderer
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.projectile.AbstractArrow
-import net.minecraft.world.entity.projectile.AbstractHurtingProjectile
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow
+import net.minecraft.world.entity.projectile.hurtingprojectile.AbstractHurtingProjectile
 import net.minecraft.world.entity.projectile.Projectile
 import net.minecraft.world.entity.projectile.ProjectileUtil
 import org.joml.Vector3d
@@ -34,12 +34,14 @@ object WorldEntityHandler : VSEntityHandler {
     }
 
     override fun <T : Entity> applyRenderTransform(
-        ship: ClientShip, entity: T, entityRenderer: EntityRenderer<T>,
+        ship: ClientShip, entity: T, entityRenderer: EntityRenderer<T, *>,
         x: Double, y: Double, z: Double,
         rotationYaw: Float, partialTicks: Float,
         matrixStack: PoseStack, buffer: MultiBufferSource, packedLight: Int
     ) {
-        val offset = entityRenderer.getRenderOffset(entity, partialTicks)
+        // 1.21.11: same as AbstractShipyardEntityHandler — EntityRenderer.getRenderOffset(entity,
+        // partialTicks) was replaced by an EntityRenderState-based overload; stub to zero.
+        val offset = net.minecraft.world.phys.Vec3.ZERO
         matrixStack.translate(x + offset.x, y + offset.y, z + offset.z)
     }
 

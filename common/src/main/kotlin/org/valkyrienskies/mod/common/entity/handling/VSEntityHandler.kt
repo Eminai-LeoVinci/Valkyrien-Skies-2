@@ -25,8 +25,10 @@ interface VSEntityHandler {
      * Gets called every render when the entity lives in the shipyard
      * You need to apply a transform the matrixStack is identity when this is called
      */
+    // 1.21.11: EntityRenderer is now generic on <T extends Entity, S extends EntityRenderState>.
+    // We don't care about the state type at this seam, so use a star projection.
     fun <T : Entity> applyRenderTransform(
-        ship: ClientShip, entity: T, entityRenderer: EntityRenderer<T>,
+        ship: ClientShip, entity: T, entityRenderer: EntityRenderer<T, *>,
         x: Double, y: Double, z: Double,
         rotationYaw: Float, partialTicks: Float,
         matrixStack: PoseStack, buffer: MultiBufferSource, packedLight: Int

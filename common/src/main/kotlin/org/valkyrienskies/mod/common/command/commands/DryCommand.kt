@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import com.mojang.brigadier.context.CommandContext
@@ -26,7 +27,7 @@ object DryCommand {
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(literal("dry")
-            .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.dryShipCommandPerms)}
+            .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.dryShipCommandPerms)}
             .then(argument("ship", ShipArgument.ships())
                 .executes {
                     dryShip(it, ShipArgument.getShip(it, "ship"))

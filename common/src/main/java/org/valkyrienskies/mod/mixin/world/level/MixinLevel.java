@@ -11,7 +11,7 @@ import org.valkyrienskies.mod.mixin.accessors.resource.ResourceKeyAccessor;
 
 /**
  * This mixin isn't entirely necessary, but it optimizes [Level.dimensionId] in [VSGameUtils.kt] by caching this value
- * as a field in the Level class. For some reason [ResourceLocation.toString()] is ridiculously slow.
+ * as a field in the Level class. For some reason [Identifier.toString()] is ridiculously slow.
  */
 @Mixin(Level.class)
 public abstract class MixinLevel implements DimensionIdProvider {

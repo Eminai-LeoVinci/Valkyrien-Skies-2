@@ -60,7 +60,9 @@ fun Level.clipIncludeShipsImpl(
 
     val vanillaHit = if(ctx.rayCastExtraParameter.skipWorld) {
         val line = ctx.to.subtract(ctx.from)
-        BlockHitResult.miss(ctx.to, Direction.getNearest(line.x, line.y, line.z), BlockPos.containing(ctx.to))
+        // 1.21.11: Direction.getNearest no longer has a Double-component overload;
+        // the new API expects integers plus an explicit fallback Direction.
+        BlockHitResult.miss(ctx.to, Direction.getNearest(line.x.toInt(), line.y.toInt(), line.z.toInt(), Direction.UP), BlockPos.containing(ctx.to))
     } else vanillaClip.call(ctx)
 
     if (shipObjectWorld == null) {

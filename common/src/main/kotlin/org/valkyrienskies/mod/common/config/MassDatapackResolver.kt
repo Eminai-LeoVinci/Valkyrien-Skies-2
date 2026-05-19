@@ -6,7 +6,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.HolderSet
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.registries.Registries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener
 import net.minecraft.tags.TagKey
@@ -41,7 +41,7 @@ import java.util.Optional
 import kotlin.math.roundToInt
 
 private data class VSBlockStateInfo(
-    val id: ResourceLocation,
+    val id: Identifier,
     val priority: Int,
     val mass: Double,
     val friction: Double,
@@ -51,7 +51,7 @@ private data class VSBlockStateInfo(
 )
 
 object MassDatapackResolver : BlockStateInfoProvider {
-    private val map = hashMapOf<ResourceLocation, VSBlockStateInfo>()
+    private val map = hashMapOf<Identifier, VSBlockStateInfo>()
     private val mcBlockStateToVs: MutableMap<BlockState, VsiBlockState> = HashMap()
 
     val blockStateData: Collection<VsiBlockState> = mcBlockStateToVs.values
@@ -76,7 +76,7 @@ object MassDatapackResolver : BlockStateInfoProvider {
         private val tags = mutableListOf<VSBlockStateInfo>()
 
         override fun apply(
-            objects: MutableMap<ResourceLocation, JsonElement>?,
+            objects: MutableMap<Identifier, JsonElement>?,
             resourceManager: ResourceManager?,
             profiler: ProfilerFiller?
         ) {
@@ -138,7 +138,7 @@ object MassDatapackResolver : BlockStateInfoProvider {
             }
         }
 
-        private fun parse(element: JsonElement, origin: ResourceLocation) {
+        private fun parse(element: JsonElement, origin: Identifier) {
             val tag = element.asJsonObject["tag"]?.asString
             val weight = element.asJsonObject["mass"]?.asDouble
                 ?: throw IllegalArgumentException("No mass in file $origin")
@@ -150,17 +150,17 @@ object MassDatapackResolver : BlockStateInfoProvider {
             val overrideNoCollision = element.asJsonObject["no_collision"]?.asBoolean
 
             if (tag != null) {
-                addToBeAddedTags(VSBlockStateInfo(ResourceLocation.parse(tag), priority, weight, friction, elasticity, null, overrideNoCollision))
+                addToBeAddedTags(VSBlockStateInfo(Identifier.parse(tag), priority, weight, friction, elasticity, null, overrideNoCollision))
             } else {
                 val block = element.asJsonObject["block"]?.asString
                     ?: throw IllegalArgumentException("No block or tag in file $origin")
 
-                add(VSBlockStateInfo(ResourceLocation.parse(block), priority, weight, friction, elasticity, null, overrideNoCollision))
+                add(VSBlockStateInfo(Identifier.parse(block), priority, weight, friction, elasticity, null, overrideNoCollision))
             }
         }
     }
 
-    fun decideDefaultPriority(resourceLocation: ResourceLocation) = when {
+    fun decideDefaultPriority(resourceLocation: Identifier) = when {
         resourceLocation.namespace.equals(ValkyrienSkiesMod.MOD_ID) -> 50
         resourceLocation.namespace.equals("custom") -> 1000
         else -> 100

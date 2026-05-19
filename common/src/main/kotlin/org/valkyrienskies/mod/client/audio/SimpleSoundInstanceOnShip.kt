@@ -2,7 +2,7 @@ package org.valkyrienskies.mod.client.audio
 
 import net.minecraft.client.resources.sounds.SimpleSoundInstance
 import net.minecraft.client.resources.sounds.SoundInstance.Attenuation
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.sounds.SoundEvent
 import net.minecraft.sounds.SoundSource
 import net.minecraft.util.RandomSource
@@ -16,7 +16,7 @@ class SimpleSoundInstanceOnShip : SimpleSoundInstance, VelocityTickableSoundInst
     private val ship: Ship
 
     constructor(
-        resourceLocation: ResourceLocation,
+        resourceLocation: Identifier,
         soundSource: SoundSource,
         volume: Float,
         pitch: Float,

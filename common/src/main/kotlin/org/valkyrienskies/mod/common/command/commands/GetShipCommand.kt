@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.minecraft.commands.CommandSourceStack
@@ -16,7 +17,7 @@ object GetShipCommand {
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(literal("get-ship")
-        .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.getShipCommandPerms)}
+        .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.getShipCommandPerms)}
         .executes {
             var success = false
             val sourceEntity: Entity? = it.source.entity

@@ -5,7 +5,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.entity.EntityRendererProvider.Context
 import net.minecraft.client.renderer.entity.MobRenderer
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.joml.Quaternionf
 import org.valkyrienskies.core.internal.world.VsiClientShipWorld
 import org.valkyrienskies.mod.client.VSPhysicsEntityModel.Companion.LAYER_LOCATION
@@ -39,8 +39,8 @@ class VSPhysicsEntityRenderer<T : VSPhysicsEntity>(context: Context) :
         super.render(mob, f, g, poseStack, multiBufferSource, i)
     }
 
-    override fun getTextureLocation(entity: T): ResourceLocation {
-        return ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "textures/test_sphere.png")
+    override fun getTextureLocation(entity: T): Identifier {
+        return Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "textures/test_sphere.png")
     }
 
 

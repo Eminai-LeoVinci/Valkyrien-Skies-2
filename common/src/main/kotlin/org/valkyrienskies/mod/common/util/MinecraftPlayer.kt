@@ -1,5 +1,6 @@
 package org.valkyrienskies.mod.common.util
 
+import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.player.Player
 import org.joml.Vector3d
 import org.valkyrienskies.core.api.ships.properties.ShipId
@@ -24,11 +25,17 @@ class MinecraftPlayer(playerObject: Player) : VsiPlayer {
 
     val player: Player get() = playerEntityReference.get()!!
 
+    // 1.21.11: Player.hasPermissions(int) is gone. Check op status via the server's PlayerList.
+    // ServerPlayer.server is package-private (widened in accesswidener). PlayerList.isOp now
+    // takes NameAndId, exposed on Player as nameAndId(). Client-side LocalPlayer → false.
+    private val isOp: Boolean
+        get() = (player as? ServerPlayer)?.let { it.server.playerList.isOp(it.nameAndId()) } ?: false
+
     override val isAdmin: Boolean
-        get() = player.hasPermissions(4)
+        get() = isOp
 
     override val canModifyServerConfig: Boolean
-        get() = vsCore.hooks.isPhysicalClient || player.hasPermissions(4)
+        get() = vsCore.hooks.isPhysicalClient || isOp
 
     override val dimension: DimensionId
         get() = player.level().dimensionId

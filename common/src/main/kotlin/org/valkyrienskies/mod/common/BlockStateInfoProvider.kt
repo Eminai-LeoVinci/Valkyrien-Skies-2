@@ -6,7 +6,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.MappedRegistry
 import net.minecraft.core.Registry
 import net.minecraft.resources.ResourceKey
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
@@ -45,7 +45,7 @@ object BlockStateInfo {
 
     // registry for mods to add their weights
     val REGISTRY = MappedRegistry<BlockStateInfoProvider>(
-        ResourceKey.createRegistryKey(ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "blockstate_providers")),
+        ResourceKey.createRegistryKey(Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "blockstate_providers")),
         Lifecycle.experimental()
     )
 
@@ -56,9 +56,9 @@ object BlockStateInfo {
 
     // init { doesn't work since the class gets loaded too late
     fun init() {
-        Registry.register(REGISTRY, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "data"), MassDatapackResolver)
+        Registry.register(REGISTRY, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "data"), MassDatapackResolver)
         Registry.register(
-            REGISTRY, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "default"), DefaultBlockStateInfoProvider
+            REGISTRY, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "default"), DefaultBlockStateInfoProvider
         )
         SORTED_REGISTRY = REGISTRY.sortedByDescending { it.priority } // why is this even tied to an event dawg
         VSGameEvents.registriesCompleted.on { _, _ -> SORTED_REGISTRY = REGISTRY.sortedByDescending { it.priority } }

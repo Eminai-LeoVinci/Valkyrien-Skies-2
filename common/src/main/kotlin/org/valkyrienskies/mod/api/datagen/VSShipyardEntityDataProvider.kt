@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import net.minecraft.data.CachedOutput
 import net.minecraft.data.DataProvider
 import net.minecraft.data.PackOutput
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.EntityType
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
@@ -14,7 +14,7 @@ import java.util.concurrent.CompletableFuture
  * Register an instance of the class with your platform's data generator.
  */
 abstract class VSShipyardEntityDataProvider(val output: PackOutput, val modId: String) : DataProvider {
-    private val entries: HashMap<ResourceLocation, CompletableFuture<*>> = HashMap()
+    private val entries: HashMap<Identifier, CompletableFuture<*>> = HashMap()
 
     /**
      * Implement this method and then use {@link VSShipyardEntityDataProvider#addEntity} method.
@@ -27,7 +27,7 @@ abstract class VSShipyardEntityDataProvider(val output: PackOutput, val modId: S
      * @param id The Entity Type ID
      */
     protected fun addEntity(
-        id: ResourceLocation
+        id: Identifier
     ) {
         if (entries.contains(id))
             throw RuntimeException("Duplicate Block Into Entries for $id")

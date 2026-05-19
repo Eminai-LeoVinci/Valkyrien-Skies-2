@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.item
+import net.minecraft.server.level.ServerPlayer
 
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
@@ -26,7 +27,7 @@ class ShipAssemblerItem(properties: Properties) : Item(properties) {
 
         if (!level.isClientSide) {
             if (ctx.level.isChunkInShipyard(pos.x shr 4, pos.z shr 4)) {
-                ctx.player?.sendSystemMessage(Component.literal("That chunk is already part of a ship!"))
+                (ctx.player as? ServerPlayer)?.sendSystemMessage(Component.literal("That chunk is already part of a ship!"))
             } else if (!blockState.isAir) {
                 // Make a ship
                 val set = DenseBlockPosSet()
@@ -37,7 +38,7 @@ class ShipAssemblerItem(properties: Properties) : Item(properties) {
                 }
 
                 val shipData = ShipAssembler.assembleToShip(level, set.map { it.toBlockPos() }.toSet(), 1.0)
-                ctx.player?.sendSystemMessage(
+                (ctx.player as? ServerPlayer)?.sendSystemMessage(
                     Component.translatable("command.valkyrienskies.shipify.success_one", shipData.slug)
                 )
             }

@@ -3,7 +3,7 @@ package org.valkyrienskies.mod.mixin.feature.sound.client;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
 import net.minecraft.client.resources.sounds.AbstractTickableSoundInstance;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.jspecify.annotations.NonNull;
@@ -21,7 +21,7 @@ public abstract class MixinAbstractTickableSoundInstance extends AbstractSoundIn
     private Vector3dc velocity = new Vector3d();
 
     protected MixinAbstractTickableSoundInstance() {
-        super((ResourceLocation) (null), null, null);
+        super((Identifier) (null), null, null);
     }
 
     @Override

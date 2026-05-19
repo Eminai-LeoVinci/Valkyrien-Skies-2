@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -16,7 +17,7 @@ object SplittingCommand {
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(literal("splitting")
-            .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.deleteShipCommandPerms)}
+            .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.deleteShipCommandPerms)}
             .then(argument("ships", ShipArgument.ships())
                 .then(argument("enable", BoolArgumentType.bool())
                     .executes {

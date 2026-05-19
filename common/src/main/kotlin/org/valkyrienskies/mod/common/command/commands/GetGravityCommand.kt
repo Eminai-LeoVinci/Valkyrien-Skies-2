@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.minecraft.commands.CommandSourceStack
@@ -14,7 +15,7 @@ object GetGravityCommand {
     private const val GET_GRAVITY_MESSAGE = "command.valkyrienskies.get_gravity"
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
-        vs.then(literal("get-gravity").requires { it.hasPermission(VSGameConfig.SERVER.Commands.getAirValuesPerms)}
+        vs.then(literal("get-gravity").requires { it.hasOpPermission(VSGameConfig.SERVER.Commands.getAirValuesPerms)}
             .executes {
                 val level = it.source.level
                 val gravity = level.shipObjectWorld.aerodynamicUtils.getAtmosphereForDimension(level.dimensionId).third

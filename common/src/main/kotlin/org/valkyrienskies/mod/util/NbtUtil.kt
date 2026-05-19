@@ -22,9 +22,9 @@ fun CompoundTag.getVector3d(prefix: String): Vector3d? {
         null
     } else {
         Vector3d(
-            this.getDouble(prefix + "x"),
-            this.getDouble(prefix + "y"),
-            this.getDouble(prefix + "z")
+            this.getDouble(prefix + "x").orElse(0.0),
+            this.getDouble(prefix + "y").orElse(0.0),
+            this.getDouble(prefix + "z").orElse(0.0)
         )
     }
 }
@@ -45,9 +45,9 @@ fun CompoundTag.getQuatd(prefix: String): Quaterniond? =
         this.contains(prefix + "w")
     ) {
         Quaterniond(
-            getDouble(prefix + "x"),
-            getDouble(prefix + "y"),
-            getDouble(prefix + "z"),
-            getDouble(prefix + "w"),
+            getDouble(prefix + "x").orElse(0.0),
+            getDouble(prefix + "y").orElse(0.0),
+            getDouble(prefix + "z").orElse(0.0),
+            getDouble(prefix + "w").orElse(0.0),
         )
     } else null

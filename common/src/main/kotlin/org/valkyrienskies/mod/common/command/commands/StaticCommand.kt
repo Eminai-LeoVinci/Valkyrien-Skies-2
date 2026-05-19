@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -18,7 +19,7 @@ object StaticCommand {
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(
             literal("set-static")
-                .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.setStaticShipCommandPerms)}.then(
+                .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.setStaticShipCommandPerms)}.then(
                     argument("ships", ShipArgument.ships()).then(
                         argument("is-static", BoolArgumentType.bool()).executes {
                             val r = ShipArgument.getShips(it, "ships").toList() as List<ServerShip>

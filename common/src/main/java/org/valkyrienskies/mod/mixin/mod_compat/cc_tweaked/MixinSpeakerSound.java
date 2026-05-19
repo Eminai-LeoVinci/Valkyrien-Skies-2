@@ -3,7 +3,7 @@ package org.valkyrienskies.mod.mixin.mod_compat.cc_tweaked;
 import dan200.computercraft.client.sound.SpeakerSound;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
@@ -22,7 +22,7 @@ public abstract class MixinSpeakerSound extends AbstractSoundInstance implements
     private Vector3dc velocity = new Vector3d();
 
     protected MixinSpeakerSound() {
-        super((ResourceLocation) (null), null, null);
+        super((Identifier) (null), null, null);
     }
 
     @Override

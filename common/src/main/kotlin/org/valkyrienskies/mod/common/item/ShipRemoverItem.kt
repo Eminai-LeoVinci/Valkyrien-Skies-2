@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.item
+import net.minecraft.server.level.ServerPlayer
 
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
@@ -23,10 +24,10 @@ class ShipRemoverItem(properties: Properties) : Item(properties) {
         if (!level.isClientSide) {
             val ship = level.getShipManagingPos(pos)
             if (ship == null) {
-                ctx.player?.sendSystemMessage(Component.translatable("command.valkyrienskies.get_ship.fail"))
+                (ctx.player as? ServerPlayer)?.sendSystemMessage(Component.translatable("command.valkyrienskies.get_ship.fail"))
             } else {
                 ShipAssembler.deleteShip(level, ship, deleteBlocks = true, dropBlocks = ctx.player?.isShiftKeyDown == true)
-                ctx.player?.sendSystemMessage(Component.translatable("command.valkyrienskies.delete.success_one", ship.slug))
+                (ctx.player as? ServerPlayer)?.sendSystemMessage(Component.translatable("command.valkyrienskies.delete.success_one", ship.slug))
             }
         }
 

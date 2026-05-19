@@ -90,7 +90,7 @@ fun Matrix4dc.transformDirection(v: Vec3i, dest: Vector3d = Vector3d()) =
     transformDirection(dest.set(v.x.toDouble(), v.y.toDouble(), v.z.toDouble()))
 
 @JvmOverloads
-fun Matrix4dc.transformDirection(dir: Direction, dest: Vector3d = Vector3d()) = transformDirection(dir.normal, dest)
+fun Matrix4dc.transformDirection(dir: Direction, dest: Vector3d = Vector3d()) = transformDirection(dir.unitVec3i, dest)
 
 fun Matrix4dc.transform(v: Vector4f) = v.also {
     it.set(

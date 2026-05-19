@@ -2,6 +2,7 @@ package org.valkyrienskies.mod.util
 
 import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.util.ProblemReporter
 import net.minecraft.world.Clearable
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
@@ -12,6 +13,7 @@ import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.chunk.LevelChunk
+import net.minecraft.world.level.storage.TagValueInput
 import org.valkyrienskies.core.api.ships.ServerShip
 
 val AIR = Blocks.AIR.defaultBlockState()
@@ -40,13 +42,10 @@ fun relocateBlock(
         tag.putInt("y", to.y)
         tag.putInt("z", to.z)
 
-        // so that it won't drop its contents
+        // so that it won't drop its contents (1.21.11: BlockEntity.loadWithComponents no
+        // longer takes a CompoundTag, so use Clearable.clearContent() directly)
         if (it is Clearable) {
-			val blockEntity = it as BlockEntity
-			val emptyTag = CompoundTag()
-            blockEntity.loadWithComponents(emptyTag, level.registryAccess())
-			
-            //it.clearContent()
+            it.clearContent()
         }
 
         // so loot containers dont drop its content
@@ -59,8 +58,10 @@ fun relocateBlock(
 
     state = state.rotate(rotation)
 
-    fromChunk.setBlockState(from, AIR, false)
-    toChunk.setBlockState(to, state, false)
+    // 1.21.11: setBlockState's last arg is now Block.UpdateFlags Int, not Boolean.
+    // We do the neighbour/light updates ourselves below via updateBlock(), so pass 0 here.
+    fromChunk.setBlockState(from, AIR, 0)
+    toChunk.setBlockState(to, state, 0)
 
     if (doUpdate) {
         updateBlock(level, from, to, state)
@@ -68,8 +69,9 @@ fun relocateBlock(
 
     tag?.let {
         val be = level.getBlockEntity(to)!!
-
-        be.loadWithComponents(it, toChunk.level.registryAccess())
+        // 1.21.11: loadWithComponents takes a ValueInput (CompoundTag + RegistryAccess + ProblemReporter).
+        val valueInput = TagValueInput.create(ProblemReporter.DISCARDING, toChunk.level.registryAccess(), it)
+        be.loadWithComponents(valueInput)
     }
 }
 
@@ -91,7 +93,7 @@ fun updateBlock(level: Level, fromPos: BlockPos, toPos: BlockPos, toState: Block
 
     level.setBlocksDirty(fromPos, toState, AIR)
     level.sendBlockUpdated(fromPos, toState, AIR, flags)
-    level.blockUpdated(fromPos, AIR.block)
+    level.updateNeighborsAt(fromPos, AIR.block)
     // This handles the update for neighboring blocks in worldspace
     AIR.updateIndirectNeighbourShapes(level, fromPos, flags, recursionLeft - 1)
     AIR.updateNeighbourShapes(level, fromPos, flags, recursionLeft)
@@ -101,7 +103,7 @@ fun updateBlock(level: Level, fromPos: BlockPos, toPos: BlockPos, toState: Block
 
     level.setBlocksDirty(toPos, AIR, toState)
     level.sendBlockUpdated(toPos, AIR, toState, flags)
-    level.blockUpdated(toPos, toState.block)
+    level.updateNeighborsAt(toPos, toState.block)
     if (!level.isClientSide && toState.hasAnalogOutputSignal()) {
         level.updateNeighbourForOutputSignal(toPos, toState.block)
     }

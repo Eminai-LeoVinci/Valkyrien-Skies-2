@@ -3,7 +3,7 @@ package org.valkyrienskies.mod.common.hooks
 import com.mojang.blaze3d.vertex.PoseStack
 import it.unimi.dsi.fastutil.objects.ObjectList
 import net.minecraft.client.renderer.LevelRenderer
-import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.rendertype.RenderType
 import net.minecraft.world.level.entity.EntityAccess
 import net.minecraft.world.level.entity.EntitySection
 import org.joml.Matrix4f

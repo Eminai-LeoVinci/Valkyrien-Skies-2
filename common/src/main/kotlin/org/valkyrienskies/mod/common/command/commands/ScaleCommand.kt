@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.arguments.DoubleArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -16,7 +17,7 @@ object ScaleCommand {
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(
             literal("scale")
-                .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.scaleShipCommandPerms)}.then(
+                .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.scaleShipCommandPerms)}.then(
                     argument("ship", ShipArgument.ships())
                         .then(argument("newScale", DoubleArgumentType.doubleArg(0.001))
                             .executes {

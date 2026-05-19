@@ -33,7 +33,7 @@ public abstract class MixinLivingEntity extends Entity {
     private void preAiStep(CallbackInfo ci) {
         // fake lerp movement gaming
         if (this.level() != null && this.level().isClientSide() && !firstTick) {
-            if (this.isControlledByLocalInstance() || (((Entity) this instanceof Player player) && player.isLocalPlayer())) return;
+            if (this.isLocalInstanceAuthoritative() || (((Entity) this instanceof Player player) && player.isLocalPlayer())) return;
             EntityDraggingInformation dragInfo = ((IEntityDraggingInformationProvider) this).getDraggingInformation();
             if (dragInfo != null && dragInfo.getLastShipStoodOn() != null) {
                 final Ship ship = VSGameUtilsKt.getShipObjectWorld(level()).getAllShips().getById(dragInfo.getLastShipStoodOn());

@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.arguments.BoolArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -19,7 +20,7 @@ object DeleteCommand {
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(literal("delete")
-            .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.deleteShipCommandPerms)}
+            .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.deleteShipCommandPerms)}
             .then(argument("ships", ShipArgument.ships())
                 .executes {
                     deleteShip(it, ShipArgument.getShips(it, "ships").toList() as List<ServerShip>)

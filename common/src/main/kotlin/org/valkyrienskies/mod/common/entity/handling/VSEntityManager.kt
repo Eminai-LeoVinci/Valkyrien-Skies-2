@@ -2,7 +2,7 @@ package org.valkyrienskies.mod.common.entity.handling
 
 import com.google.common.cache.CacheBuilder
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.projectile.Projectile
@@ -16,8 +16,8 @@ import kotlin.text.RegexOption.IGNORE_CASE
 
 // TODO if needed initialize the handler with certain settings
 object VSEntityManager {
-    private val entityHandlersNamed = HashMap<ResourceLocation, VSEntityHandler>()
-    private val namedEntityHandlers = HashMap<VSEntityHandler, ResourceLocation>()
+    private val entityHandlersNamed = HashMap<Identifier, VSEntityHandler>()
+    private val namedEntityHandlers = HashMap<VSEntityHandler, Identifier>()
     private val entityHandlers = HashMap<EntityType<*>, VSEntityHandler>()
     private val default = WorldEntityHandler
     private var contraptionHandler: VSEntityHandler = DefaultShipyardEntityHandler
@@ -26,8 +26,8 @@ object VSEntityManager {
         CacheBuilder.newBuilder().expireAfterAccess(Duration.ofMinutes(5)).build<EntityType<*>, VSEntityHandler>()
 
     init {
-        register(ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "shipyard"), DefaultShipyardEntityHandler)
-        register(ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "default"), WorldEntityHandler)
+        register(Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "shipyard"), DefaultShipyardEntityHandler)
+        register(Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "default"), WorldEntityHandler)
     }
 
     /**
@@ -36,7 +36,7 @@ object VSEntityManager {
      * @param name The name of the entity handler
      * @param entityHandler The entity handler
      */
-    fun register(name: ResourceLocation, entityHandler: VSEntityHandler) {
+    fun register(name: Identifier, entityHandler: VSEntityHandler) {
         entityHandlersNamed[name] = entityHandler
         namedEntityHandlers[entityHandler] = name
     }
@@ -85,7 +85,7 @@ object VSEntityManager {
         return default
     }
 
-    fun getHandler(type: ResourceLocation): VSEntityHandler? {
+    fun getHandler(type: Identifier): VSEntityHandler? {
         return entityHandlersNamed[type]
     }
 

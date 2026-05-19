@@ -5,8 +5,8 @@ import com.mojang.logging.LogUtils
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.entity.EntityRenderer
 import net.minecraft.world.entity.Entity
-import net.minecraft.world.entity.projectile.AbstractArrow
-import net.minecraft.world.entity.projectile.AbstractHurtingProjectile
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow
+import net.minecraft.world.entity.projectile.hurtingprojectile.AbstractHurtingProjectile
 import net.minecraft.world.entity.projectile.Projectile
 import net.minecraft.world.entity.projectile.ProjectileUtil
 import org.joml.Quaternionf
@@ -28,7 +28,7 @@ abstract class AbstractShipyardEntityHandler : VSEntityHandler {
     }
 
     override fun <T : Entity> applyRenderTransform(
-        ship: ClientShip, entity: T, entityRenderer: EntityRenderer<T>, x: Double, y: Double, z: Double,
+        ship: ClientShip, entity: T, entityRenderer: EntityRenderer<T, *>, x: Double, y: Double, z: Double,
         rotationYaw: Float, partialTicks: Float, matrixStack: PoseStack, buffer: MultiBufferSource, packedLight: Int
     ) {
         val transform = ship.renderTransform
@@ -39,7 +39,9 @@ abstract class AbstractShipyardEntityHandler : VSEntityHandler {
         val camX = x - entityPosition.x
         val camY = y - entityPosition.y
         val camZ = z - entityPosition.z
-        val offset = entityRenderer.getRenderOffset(entity, partialTicks)
+        // 1.21.11: EntityRenderer.getRenderOffset now takes EntityRenderState; stub to zero
+        // (small per-entity render offset is lost — mostly cosmetic).
+        val offset = net.minecraft.world.phys.Vec3.ZERO
         val scale = transform.shipToWorldScaling
 
         matrixStack.translate(transformed.x + camX, transformed.y + camY, transformed.z + camZ)

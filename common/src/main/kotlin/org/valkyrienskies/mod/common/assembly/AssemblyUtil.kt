@@ -59,7 +59,7 @@ object AssemblyUtil {
 
         level.setBlocksDirty(fromPos, toState, AIR)
         level.sendBlockUpdated(fromPos, toState, AIR, flags)
-        level.blockUpdated(fromPos, AIR.block)
+        level.updateNeighborsAt(fromPos, AIR.block)
         // This handles the update for neighboring blocks in worldspace
         AIR.updateIndirectNeighbourShapes(level, fromPos, flags, recursionLeft - 1)
         AIR.updateNeighbourShapes(level, fromPos, flags, recursionLeft)
@@ -69,7 +69,7 @@ object AssemblyUtil {
 
         level.setBlocksDirty(toPos, AIR, toState)
         level.sendBlockUpdated(toPos, AIR, toState, flags)
-        level.blockUpdated(toPos, toState.block)
+        level.updateNeighborsAt(toPos, toState.block)
         if (!level.isClientSide && toState.hasAnalogOutputSignal()) {
             level.updateNeighbourForOutputSignal(toPos, toState.block)
         }

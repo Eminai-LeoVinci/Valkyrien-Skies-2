@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -13,7 +14,7 @@ import org.valkyrienskies.mod.common.vsCore
 object RenameCommand {
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(literal("rename")
-            .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.renameShipCommandPerms)}
+            .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.renameShipCommandPerms)}
             .then(argument("ship", ShipArgument.ships())
                 .then(argument("newName", StringArgumentType.string())
                     .executes {

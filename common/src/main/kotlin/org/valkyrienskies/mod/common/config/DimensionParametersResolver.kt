@@ -3,7 +3,7 @@ package org.valkyrienskies.mod.common.config
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.packs.resources.ResourceManager
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener
 import net.minecraft.util.profiling.ProfilerFiller
@@ -18,7 +18,7 @@ object DimensionParametersResolver: SimpleJsonResourceReloadListener(Gson(), "vs
     var dimensionMap: Map<String, Parameters> = hashMapOf()
 
     override fun apply(
-        objects: Map<ResourceLocation?, JsonElement?>,
+        objects: Map<Identifier?, JsonElement?>,
         resourceManager: ResourceManager,
         profiler: ProfilerFiller
     ) {

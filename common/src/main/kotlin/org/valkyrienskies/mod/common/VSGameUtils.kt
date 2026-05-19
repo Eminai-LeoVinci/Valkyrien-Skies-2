@@ -8,7 +8,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Position
 import net.minecraft.core.Vec3i
 import net.minecraft.resources.ResourceKey
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerChunkCache
 import net.minecraft.server.level.ServerLevel
@@ -92,7 +92,7 @@ fun getResourceKey(dimensionId: DimensionId): ResourceKey<Level> {
     if (cached == null) {
         val (registryNamespace, registryName, namespace, name) = dimensionId.split(":")
         val toReturn: ResourceKey<Level> = ResourceKeyAccessor.callCreate(
-            ResourceLocation.fromNamespaceAndPath(registryNamespace, registryName), ResourceLocation.fromNamespaceAndPath(namespace, name)
+            Identifier.fromNamespaceAndPath(registryNamespace, registryName), Identifier.fromNamespaceAndPath(namespace, name)
         )
         levelResourceKeyMap[dimensionId] = toReturn
         return toReturn

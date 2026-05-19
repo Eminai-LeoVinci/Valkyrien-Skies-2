@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.minecraft.commands.CommandSourceStack
@@ -19,7 +20,7 @@ object RemassCommand {
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(
             literal("remass")
-                .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.remassShipCommandPerms)}.then(
+                .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.remassShipCommandPerms)}.then(
                     argument("ships", ShipArgument.ships()).executes {
                         val r = ShipArgument.getShips(it, "ships").toList() as List<ServerShip>
                         var successful = 0

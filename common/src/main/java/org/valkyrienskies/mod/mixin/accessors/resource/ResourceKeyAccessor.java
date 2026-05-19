@@ -1,7 +1,7 @@
 package org.valkyrienskies.mod.mixin.accessors.resource;
 
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.gen.Invoker;
@@ -17,10 +17,10 @@ public interface ResourceKeyAccessor {
  */
 
     @Accessor
-    ResourceLocation getRegistryName();
+    Identifier getRegistryName();
 
     @Invoker
-    static <T> ResourceKey<T> callCreate(final ResourceLocation parent, final ResourceLocation location) {
+    static <T> ResourceKey<T> callCreate(final Identifier parent, final Identifier location) {
         throw new AssertionError();
     }
 }

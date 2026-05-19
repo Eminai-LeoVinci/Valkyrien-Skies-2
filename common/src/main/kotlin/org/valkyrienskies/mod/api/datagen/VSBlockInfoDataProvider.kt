@@ -6,7 +6,7 @@ import com.google.gson.JsonPrimitive
 import net.minecraft.data.CachedOutput
 import net.minecraft.data.DataProvider
 import net.minecraft.data.PackOutput
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.tags.TagKey
 import net.minecraft.world.level.block.Block
 import org.valkyrienskies.mod.common.ValkyrienSkiesMod
@@ -18,7 +18,7 @@ import kotlin.io.path.name
  * Register an instance of the class with your platform's data generator.
  */
 abstract class VSBlockInfoDataProvider(val output: PackOutput, val modId: String) : DataProvider {
-    private val entries: HashMap<ResourceLocation, Info> = HashMap()
+    private val entries: HashMap<Identifier, Info> = HashMap()
 
     /**
      * Implement this method and then use the {@link VSBlockInfoDataProvider#addBlock} and {@link VSBlockInfoDataProvider#addBlockTag} methods.
@@ -35,7 +35,7 @@ abstract class VSBlockInfoDataProvider(val output: PackOutput, val modId: String
      * @param priority The Priority of this information. Higher priorities override data from lower priorities.
      */
     protected fun addBlock(
-        id: ResourceLocation,
+        id: Identifier,
         mass: Double? = null,
         friction: Double? = null,
         elasticity: Double? = null,
@@ -55,7 +55,7 @@ abstract class VSBlockInfoDataProvider(val output: PackOutput, val modId: String
      * @param priority The Priority of this information. Higher priorities override data from lower priorities.
      */
     protected fun addBlockTag(
-        id: ResourceLocation,
+        id: Identifier,
         mass: Double? = null,
         friction: Double? = null,
         elasticity: Double? = null,
@@ -135,7 +135,7 @@ abstract class VSBlockInfoDataProvider(val output: PackOutput, val modId: String
         val elasticity: Double?,
         val priority: Int?
     ) {
-        fun toJson(id: ResourceLocation): JsonObject {
+        fun toJson(id: Identifier): JsonObject {
             val obj = JsonObject()
             obj.add(if (tag) "tag" else "block", JsonPrimitive(id.toString()))
             mass?.let { d -> obj.add("mass", JsonPrimitive(d)) }

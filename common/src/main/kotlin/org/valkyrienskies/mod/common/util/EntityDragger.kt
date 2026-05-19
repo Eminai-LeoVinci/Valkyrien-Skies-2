@@ -145,7 +145,7 @@ object EntityDragger {
                             entity.yBodyRot = Mth.wrapDegrees(entity.yBodyRot + addedYRot.toFloat())
                         }
                     } else {
-                        if (!entity.isControlledByLocalInstance && entity !is Player) {
+                        if (!entity.isLocalInstanceAuthoritative && entity !is Player) {
                             entity.yRot = Mth.wrapDegrees(entity.yRot + addedYRot.toFloat())
                             entity.yHeadRot = Mth.wrapDegrees(entity.yHeadRot + addedYRot.toFloat())
                             if(entity is LivingEntity) {
@@ -339,7 +339,7 @@ object EntityDragger {
         //get the normal of the hit face in worldspace
         val hitShip = level.getLoadedShipManagingPos(result.blockPos)
         if (hitShip != null) {
-            val hitSide = result.direction.normal.toJOMLD()
+            val hitSide = result.direction.unitVec3i.toJOMLD()
             val upDir: Vector3dc = Vector3d(0.0, 1.0, 0.0)
             val hitSideInWorld = hitShip.shipToWorld.transformDirection(hitSide, Vector3d()).normalize()
             // If the hit side is not facing up, we can't walk on it

@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
 import net.minecraft.commands.CommandSourceStack
@@ -28,7 +29,7 @@ object TeleportCommand {
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(
             literal("teleport")
-                .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.teleportShipCommandPerms)}.then(
+                .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.teleportShipCommandPerms)}.then(
                     argument("ships", ShipArgument.ships()).then(
                         argument("position", Vec3Argument.vec3()).executes {
                             // If only position is present then we execute this code

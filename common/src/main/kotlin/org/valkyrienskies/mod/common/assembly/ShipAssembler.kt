@@ -245,7 +245,7 @@ object ShipAssembler {
             for (pos in blocks) {
                 level.getBlockEntity(pos)?.let {
                     if (it is Clearable) {
-                        Clearable.tryClear(it)
+                        it.clearContent()
                     } else {
                         it.loadWithComponents(CompoundTag(), level.registryAccess())
                     }
@@ -452,7 +452,7 @@ object ShipAssembler {
         }
 
         // Pre-load all destination chunks.
-        // Uses addRegionTicket to schedule all chunk loads concurrently, then runs the
+        // Uses addTicketWithRadius to schedule all chunk loads concurrently, then runs the
         // distance manager + main thread tasks until all chunks reach FULL status.
         // This is much faster than calling level.getChunk() 1000 times sequentially,
         // because the chunk pipeline processes multiple chunks on its worker thread pool.
@@ -461,7 +461,7 @@ object ShipAssembler {
 
         // Add tickets for all dest chunks first (non-blocking, just queues them)
         for (cp in allDestChunkPoses) {
-            chunkSource.addRegionTicket(
+            chunkSource.addTicketWithRadius(
                 org.valkyrienskies.mod.common.world.VSTicketType.SHIP_CHUNK, cp, 0, cp
             )
         }
@@ -545,7 +545,7 @@ object ShipAssembler {
                     // neighbor update machinery. Skip sendBlockUpdated since source chunks
                     // are stalled by PacketStopChunkUpdates.
                     level.getBlockEntity(srcPos)?.let {
-                        if (it is Clearable) Clearable.tryClear(it) else it.loadWithComponents(CompoundTag(), level.registryAccess())
+                        if (it is Clearable) it.clearContent()
                         level.removeBlockEntity(srcPos)
                     }
                     val srcChunk = level.getChunkAt(srcPos)
@@ -579,7 +579,7 @@ object ShipAssembler {
 
                 for (pos in filteredBlocks) {
                     level.getBlockEntity(pos)?.let {
-                        if (it is Clearable) Clearable.tryClear(it) else it.loadWithComponents(CompoundTag(), level.registryAccess())
+                        if (it is Clearable) it.clearContent()
                         level.removeBlockEntity(pos)
                     }
                     level.setBlock(pos, Blocks.AIR.defaultBlockState(), removeFlags)

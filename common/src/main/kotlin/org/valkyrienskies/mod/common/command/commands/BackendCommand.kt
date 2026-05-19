@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.command.commands
+import org.valkyrienskies.mod.common.command.hasOpPermission
 
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.brigadier.builder.LiteralArgumentBuilder
@@ -22,7 +23,7 @@ object BackendCommand {
 
     fun register(vs: LiteralArgumentBuilder<CommandSourceStack>) {
         vs.then(literal("backend")
-            .requires{ it.hasPermission(VSGameConfig.SERVER.Commands.changeBackendCommandPerms)}
+            .requires{ it.hasOpPermission(VSGameConfig.SERVER.Commands.changeBackendCommandPerms)}
             .then(literal("engine")
                 .then(literal("krunch")
                     .executes {

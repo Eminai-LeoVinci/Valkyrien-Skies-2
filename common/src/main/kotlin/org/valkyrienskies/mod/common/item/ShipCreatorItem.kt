@@ -1,4 +1,5 @@
 package org.valkyrienskies.mod.common.item
+import net.minecraft.server.level.ServerPlayer
 
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerLevel
@@ -67,7 +68,7 @@ class ShipCreatorItem(
 
                 org.slf4j.LoggerFactory.getLogger("VS2").info(" ShipCreatorItem: block relocated. Ship transform pos=(${serverShip.transform.position})")
 
-                ctx.player?.sendSystemMessage(Component.translatable("command.valkyrienskies.shipify.success_one", serverShip.slug))
+                (ctx.player as? ServerPlayer)?.sendSystemMessage(Component.translatable("command.valkyrienskies.shipify.success_one", serverShip.slug))
                 if (parentShip != null) {
                     // Compute the ship transform
                     val newShipPosInWorld =

@@ -25,7 +25,9 @@ object VSKeyBindings {
             // If this throws error ur on server
             override fun get(): KeyMapping = registered
             override fun accept(t: Consumer<KeyMapping>) {
-                registered = KeyMapping(name, keyCode, category)
+                // 1.21.11: KeyMapping's 3rd arg is KeyMapping.Category, not String.
+                // Category.register(String) creates/returns a registered category by name.
+                registered = KeyMapping(name, keyCode, KeyMapping.Category.register(category))
                 t.accept(registered)
             }
         }.apply { toBeRegistered.add(this) }
