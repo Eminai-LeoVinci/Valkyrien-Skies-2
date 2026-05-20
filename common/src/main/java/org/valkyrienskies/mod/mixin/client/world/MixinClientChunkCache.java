@@ -7,6 +7,7 @@ import static org.valkyrienskies.mod.common.ValkyrienSkiesMod.getVsCore;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientChunkCache;
@@ -22,6 +23,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import org.joml.Vector3i;
 import org.valkyrienskies.core.api.ships.ClientShip;
@@ -85,7 +87,7 @@ public abstract class MixinClientChunkCache implements ClientChunkCacheDuck {
     @Inject(method = "replaceWithPacketData", at = @At("HEAD"), cancellable = true)
     private void preLoadChunkFromPacket(final int x, final int z,
         final FriendlyByteBuf buf,
-        final CompoundTag tag,
+        final Map<Heightmap.Types, long[]> tag,
         final Consumer<BlockEntityTagOutput> consumer, final CallbackInfoReturnable<LevelChunk> cir) {
         final ClientChunkCacheStorageAccessor clientChunkMapAccessor =
             ClientChunkCacheStorageAccessor.class.cast(storage);
@@ -158,7 +160,7 @@ public abstract class MixinClientChunkCache implements ClientChunkCacheDuck {
                         ((LevelRendererAccessor) ((ClientLevelAccessor) level).getLevelRenderer()).getViewArea();
                     for (int dx = -1; dx <= 1; dx++) {
                         for (int dz = -1; dz <= 1; dz++) {
-                            for (int sy = level.getMinSection(); sy < level.getMaxSection(); sy++) {
+                            for (int sy = level.getMinSectionY(); sy <= level.getMaxSectionY(); sy++) {
                                 final SectionRenderDispatcher.RenderSection renderSection =
                                     viewArea.vs$getShipRenderSection(x + dx, sy, z + dz);
                                 if (renderSection != null) {

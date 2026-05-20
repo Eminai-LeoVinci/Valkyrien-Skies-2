@@ -35,7 +35,7 @@ public class MixinNoiseBasedChunkGenerator {
     private void preGetBaseColumn(int i, int j, LevelHeightAccessor levelHeightAccessor, RandomState randomState, CallbackInfoReturnable<NoiseColumn> cir) {
         if (VS2ChunkAllocator.INSTANCE.isChunkInShipyardCompanion(i, j)) {
             final NoiseSettings noiseSettings = this.settings.value().noiseSettings();
-            final int k = Math.max(noiseSettings.minY(), levelHeightAccessor.getMinBuildHeight());
+            final int k = Math.max(noiseSettings.minY(), levelHeightAccessor.getMinY());
             cir.setReturnValue(new NoiseColumn(k, new BlockState[0]));
         }
     }

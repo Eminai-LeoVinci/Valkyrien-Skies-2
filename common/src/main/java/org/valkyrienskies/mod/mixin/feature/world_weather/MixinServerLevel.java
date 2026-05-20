@@ -27,7 +27,7 @@ public abstract class MixinServerLevel {
         @Local(argsOnly = true) LevelChunk chunk, @Share("ship") LocalRef<Ship> shipRef
     ) {
         BlockPos result = original.call(level, types, pos);
-        BlockPos failure = BlockPos.ZERO.above(level.getMinBuildHeight() - 1);
+        BlockPos failure = BlockPos.ZERO.above(level.getMinY() - 1);
 
         // Simple comparison with no ray casting. Ships will not occlude each other or world.
         Ship ship = VSGameUtilsKt.getShipManagingPos(level, chunk.getPos());

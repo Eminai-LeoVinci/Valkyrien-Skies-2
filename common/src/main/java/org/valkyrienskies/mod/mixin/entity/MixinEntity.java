@@ -183,7 +183,8 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
                         final BlockState blockState = this.level.getBlockState(mutableBlockPos);
 
                         try {
-                            blockState.entityInside(this.level, mutableBlockPos, self);
+                            blockState.entityInside(this.level, mutableBlockPos, self,
+                                net.minecraft.world.entity.InsideBlockEffectApplier.NOOP, false);
                             this.onInsideBlock(blockState);
                         } catch (final Throwable var12) {
                             final CrashReport crashReport =

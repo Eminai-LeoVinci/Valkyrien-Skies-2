@@ -47,3 +47,5 @@ accessible method net/minecraft/client/KeyMapping$Category register (Ljava/lang/
 accessible field net/minecraft/world/level/Level isClientSide Z
 # Player.STANDING_DIMENSIONS moved to Avatar and is protected; MixinClientLevel reads it.
 accessible field net/minecraft/world/entity/Avatar STANDING_DIMENSIONS Lnet/minecraft/world/entity/EntityDimensions;
+# Camera.getPosition() was removed; widen the position field so VS render mixins can read it.
+accessible field net/minecraft/client/Camera position Lnet/minecraft/world/phys/Vec3;

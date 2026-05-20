@@ -49,10 +49,11 @@ public class MixinClientPacketListener {
             final double d = packet.getX();
             final double e = packet.getY();
             final double f = packet.getZ();
-            final Entity entity = ValkyrienSkiesMod.SHIP_MOUNTING_ENTITY_TYPE.create(level);
+            final Entity entity = ValkyrienSkiesMod.SHIP_MOUNTING_ENTITY_TYPE.create(level,
+                net.minecraft.world.entity.EntitySpawnReason.LOAD);
             final int i = packet.getId();
             entity.syncPacketPositionCodec(d, e, f);
-            entity.moveTo(d, e, f);
+            entity.snapTo(d, e, f, entity.getYRot(), entity.getXRot());
             entity.setXRot((float) (packet.getXRot() * 360) / 256.0f);
             entity.setYRot((float) (packet.getYRot() * 360) / 256.0f);
             entity.setId(i);

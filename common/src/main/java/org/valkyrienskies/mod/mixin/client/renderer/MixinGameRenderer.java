@@ -281,7 +281,7 @@ public abstract class MixinGameRenderer {
         // position.
         final double fov = this.getFov(camera, partialTicks, true);
         final Matrix4f projectionMatrixNew = this.getProjectionMatrix(Math.max(fov, (double) this.minecraft.options.fov().get()));
-        prepareCullFrustum.call(instance, camera.getPosition(), rotationMatrix, projectionMatrixNew);
+        prepareCullFrustum.call(instance, camera.position, rotationMatrix, projectionMatrixNew);
     }
     // endregion
 
@@ -289,7 +289,7 @@ public abstract class MixinGameRenderer {
     public float includeShipsIn(final float originalDepth) {
         float maxDistance = originalDepth;
         for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(Minecraft.getInstance()).getLoadedShips()) {
-            Vec3 cameraPos = this.mainCamera.getPosition();
+            Vec3 cameraPos = this.mainCamera.position;
             AABBdc shipAABB = ship.getRenderAABB();
             // find the furthest distance from the camera to the ship AABB corners
             double furthestDistanceSq = 0;

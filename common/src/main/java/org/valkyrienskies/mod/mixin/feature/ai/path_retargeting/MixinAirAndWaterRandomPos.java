@@ -38,7 +38,7 @@ public class MixinAirAndWaterRandomPos {
                         .transformPosition(VectorConversionsMCKt.toJOMLD(blockPos2), new Vector3d());
                     BlockPos blockPosInShip = BlockPos.containing(VectorConversionsMCKt.toMinecraft(posInShip));
                     if (!GoalUtils.isRestricted(bl, pathfinderMob, blockPosInShip) &&
-                        !GoalUtils.hasMalus(pathfinderMob, blockPos2 = RandomPos.moveUpOutOfSolid(blockPos2, pathfinderMob.level().getMaxBuildHeight(), arg2 -> GoalUtils.isSolid(pathfinderMob, arg2)))) {
+                        !GoalUtils.hasMalus(pathfinderMob, blockPos2 = RandomPos.moveUpOutOfSolid(blockPos2, pathfinderMob.level().getMaxY(), arg2 -> GoalUtils.isSolid(pathfinderMob, arg2)))) {
                         cir.setReturnValue(blockPosInShip);
                         break;
                     }

@@ -115,24 +115,15 @@ public abstract class MixinLevelChunk extends ChunkAccess implements VSLevelChun
     @Shadow
     public abstract void unregisterTickContainerFromLevel(ServerLevel serverLevel);
 
+    /**
+     * 1.21.11: relied on the (Registry&lt;Biome&gt;) LevelChunkSection ctor plus direct heightmaps/
+     * unsaved field access, all changed. Only used by cross-dimension ship transfer, which is
+     * out of scope for the initial 1.21.11 port (helm + assembly); stubbed until ported.
+     */
     @Override
     public void clearChunk() {
-        clearAllBlockEntities();
-        unregisterTickContainerFromLevel((ServerLevel) level);
-
-        // Set terrain to empty
-        heightmaps.clear();
-        Arrays.fill(sections, null);
-        final Registry<Biome> registry = level.registryAccess().registryOrThrow(Registries.BIOME);
-        for (int i = 0; i < sections.length; ++i) {
-            if (sections[i] != null) continue;
-            //new LevelChunkSection(registry);
-            sections[i] = new LevelChunkSection(registry);
-        }
-        this.setLightCorrect(false);
-
-        registerTickContainerInLevel((ServerLevel) level);
-        this.unsaved = true;
+        throw new UnsupportedOperationException(
+            "clearChunk is not yet ported to 1.21.11 (cross-dimension ship transfer)");
     }
 
     /**

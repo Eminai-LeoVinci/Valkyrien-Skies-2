@@ -159,7 +159,7 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
                 this.awaitingTeleport = 0;
             }
             this.awaitingTeleportTime = this.tickCount;
-            this.player.absMoveTo(pos.x, pos.y, pos.z, yaw, pitch);
+            this.player.absSnapTo(pos.x, pos.y, pos.z, yaw, pitch);
 
             this.send(
                 new ClientboundPlayerPositionPacket(pos.x, pos.y, pos.z, yaw, pitch, Collections.emptySet(),

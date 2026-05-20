@@ -58,16 +58,16 @@ public abstract class MixinLocalPlayer extends Entity implements IEntityDragging
                 final boolean isOnGround = movePacket.isOnGround() || getDraggingInformation().isEntityBeingDraggedByAShip();
                 if (movePacket.hasPosition() && movePacket.hasRotation()) {
                     //posrot
-                    realArg = new ServerboundMovePlayerPacket.PosRot(movePacket.getX(0.0), movePacket.getY(0.0), movePacket.getZ(0.0), movePacket.getYRot(0.0f), movePacket.getXRot(0.0f), isOnGround);
+                    realArg = new ServerboundMovePlayerPacket.PosRot(movePacket.getX(0.0), movePacket.getY(0.0), movePacket.getZ(0.0), movePacket.getYRot(0.0f), movePacket.getXRot(0.0f), isOnGround, movePacket.horizontalCollision());
                 } else if (movePacket.hasPosition()) {
                     //pos
-                    realArg = new ServerboundMovePlayerPacket.Pos(movePacket.getX(0.0), movePacket.getY(0.0), movePacket.getZ(0.0), isOnGround);
+                    realArg = new ServerboundMovePlayerPacket.Pos(movePacket.getX(0.0), movePacket.getY(0.0), movePacket.getZ(0.0), isOnGround, movePacket.horizontalCollision());
                 } else if (movePacket.hasRotation()) {
                     //rot
-                    realArg = new ServerboundMovePlayerPacket.Rot(movePacket.getYRot(0.0f), movePacket.getXRot(0.0f), isOnGround);
+                    realArg = new ServerboundMovePlayerPacket.Rot(movePacket.getYRot(0.0f), movePacket.getXRot(0.0f), isOnGround, movePacket.horizontalCollision());
                 } else {
                     //status only
-                    realArg = new ServerboundMovePlayerPacket.StatusOnly(isOnGround);
+                    realArg = new ServerboundMovePlayerPacket.StatusOnly(isOnGround, movePacket.horizontalCollision());
                 }
             }
         }

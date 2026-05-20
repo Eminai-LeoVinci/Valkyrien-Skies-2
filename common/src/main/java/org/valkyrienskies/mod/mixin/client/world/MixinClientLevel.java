@@ -133,7 +133,7 @@ public abstract class MixinClientLevel implements IShipObjectWorldClientProvider
     private void afterAnimatedTick(final int posX, final int posY, final int posZ, final CallbackInfo ci) {
         boolean holdingBarrierItem = false;
         if (this.minecraft.gameMode.getPlayerMode() == GameType.CREATIVE) {
-            for (final ItemStack itemStack : this.minecraft.player.getHandSlots()) {
+            for (final ItemStack itemStack : java.util.List.of(this.minecraft.player.getMainHandItem(), this.minecraft.player.getOffhandItem())) {
                 if (itemStack.getItem() == Blocks.BARRIER.asItem()) {
                     holdingBarrierItem = true;
                     break;

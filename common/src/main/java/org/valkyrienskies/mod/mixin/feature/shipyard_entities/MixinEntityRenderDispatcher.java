@@ -46,8 +46,8 @@ public class MixinEntityRenderDispatcher {
     private void preDistanceToSqr(final double x, final double y, final double z,
         final CallbackInfoReturnable<Double> cir) {
         // entity seems to be null sometimes when the "real camera" mod is used
-        if (camera.getEntity() == null) return;
-        cir.setReturnValue(VSGameUtilsKt.squaredDistanceToInclShips(camera.getEntity(), x, y, z));
+        if (camera.entity() == null) return;
+        cir.setReturnValue(VSGameUtilsKt.squaredDistanceToInclShips(camera.entity(), x, y, z));
     }
 
     @Inject(method = "render",
@@ -60,7 +60,7 @@ public class MixinEntityRenderDispatcher {
         final T entity, final double x, final double y, final double z, final float rotationYaw,
         final float partialTicks, final PoseStack matrixStack,
         final MultiBufferSource buffer, final int packedLight, final CallbackInfo ci,
-        final EntityRenderer<T> entityRenderer
+        final EntityRenderer<T, ?> entityRenderer
     ) {
         final ShipMountedToData shipMountedToData = VSGameUtilsKt.getShipMountedToData(entity, partialTicks);
 

@@ -38,7 +38,7 @@ public abstract class MixinServerPlayer extends Player {
         cancellable = true
     )
     private void beforeTeleportTo(final double x, final double y, final double z, final CallbackInfo ci) {
-        ServerLevel level = ((ServerPlayer) (Object) this).serverLevel();
+        ServerLevel level = ((ServerPlayer) (Object) this).level();
         final Ship ship = VSGameUtilsKt.getShipManagingPos(level, x, y, z);
         if (ship != null) {
             ci.cancel();
@@ -53,7 +53,7 @@ public abstract class MixinServerPlayer extends Player {
         cancellable = true
     )
     private void beforeDismountTo(final double x, final double y, final double z, final CallbackInfo ci) {
-        ServerLevel level = ((ServerPlayer) (Object) this).serverLevel();
+        ServerLevel level = ((ServerPlayer) (Object) this).level();
         final Ship ship = VSGameUtilsKt.getShipManagingPos(level, x, y, z);
         if (ship != null) {
             ci.cancel();

@@ -392,7 +392,7 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
                         final ChunkPos cp = new ChunkPos(x, z);
                         // Remove the SHIP_CHUNK ticket (radius-0, level 33)
                         level.getChunkSource().removeTicketWithRadius(
-                            org.valkyrienskies.mod.common.world.VSTicketType.SHIP_CHUNK, cp, 0, cp);
+                            org.valkyrienskies.mod.common.world.VSTicketType.SHIP_CHUNK, cp, 0);
                         // Also remove any legacy FORCED tickets in case they exist
                         level.getChunkSource().updateChunkForced(cp, false);
                     });
