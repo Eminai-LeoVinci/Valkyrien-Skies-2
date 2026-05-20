@@ -3,7 +3,7 @@ package org.valkyrienskies.mod.fabric.mixin.compat.cc_restitched;
 import dan200.computercraft.client.sound.SpeakerSound;
 import dan200.computercraft.shared.peripheral.speaker.SpeakerPosition;
 import net.minecraft.client.resources.sounds.AbstractSoundInstance;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
@@ -24,7 +24,7 @@ public abstract class MixinSpeakerSound extends AbstractSoundInstance implements
     @Unique private SpeakerPosition speakerPosition;
     @Unique private Ship ship;
 
-    protected MixinSpeakerSound(ResourceLocation arg, SoundSource arg2, RandomSource arg3) {
+    protected MixinSpeakerSound(Identifier arg, SoundSource arg2, RandomSource arg3) {
         super(arg, arg2, arg3);
     }
 
