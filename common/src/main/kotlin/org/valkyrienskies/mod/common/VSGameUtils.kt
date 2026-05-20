@@ -119,7 +119,7 @@ fun MinecraftServer.executeIf(condition: () -> Boolean, toExecute: Runnable) {
     }
 }
 
-val Level.yRange get() = LevelYRange(minBuildHeight, maxBuildHeight - 1)
+val Level.yRange get() = LevelYRange(minY, maxY - 1)
 
 fun Level.isTickingChunk(pos: ChunkPos) = isTickingChunk(pos.x, pos.z)
 fun Level.isTickingChunk(chunkX: Int, chunkZ: Int) =

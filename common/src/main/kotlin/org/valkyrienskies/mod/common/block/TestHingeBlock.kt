@@ -197,15 +197,16 @@ object TestHingeBlock :
         return InteractionResult.CONSUME
     }
 
-    override fun onRemove(
-        blockState: BlockState, level: Level, blockPos: BlockPos, blockState2: BlockState, bl: Boolean
+    // 1.21.11: the 5-arg Block.onRemove was removed; affectNeighborsAfterRemoval is the
+    // post-removal hook (and is ServerLevel-typed). Joint cleanup moves here.
+    override fun affectNeighborsAfterRemoval(
+        blockState: BlockState, level: ServerLevel, blockPos: BlockPos, bl: Boolean
     ) {
-        if (level is ServerLevel) run {
-            val be = level.getBlockEntity(blockPos) as? TestHingeBlockEntity ?: return@run
-            ValkyrienSkiesMod.getOrCreateGTPA(level.dimensionId).removeJoint(be.constraintId ?: return@run)
+        val be = level.getBlockEntity(blockPos) as? TestHingeBlockEntity
+        if (be != null) {
+            be.constraintId?.let { ValkyrienSkiesMod.getOrCreateGTPA(level.dimensionId).removeJoint(it) }
         }
-
-        super.onRemove(blockState, level, blockPos, blockState2, bl)
+        super.affectNeighborsAfterRemoval(blockState, level, blockPos, bl)
     }
 
     override fun newBlockEntity(blockPos: BlockPos, blockState: BlockState): TestHingeBlockEntity = TestHingeBlockEntity(blockPos, blockState)
@@ -229,10 +230,13 @@ object TestHingeBlock :
     ): CompoundTag? {
         val tag = tag ?: return null
 
-        tag.putVector3d("pos0", centerPositions[tag.getLong("shipId0")]!!.let { (old, new) -> tag.getVector3d("pos0")!!.sub(old).add(new) })
-        tag.putVector3d("pos1", centerPositions[tag.getLong("shipId1")]!!.let { (old, new) -> tag.getVector3d("pos1")!!.sub(old).add(new) })
-        tag.putLong("shipId0", oldShipIdToNewId[tag.getLong("shipId0")]!!)
-        tag.putLong("shipId1", oldShipIdToNewId[tag.getLong("shipId1")]!!)
+        // 1.21.11: CompoundTag.getLong returns Optional<Long>; unwrap for map-key use.
+        val shipId0 = tag.getLong("shipId0").orElse(0L)
+        val shipId1 = tag.getLong("shipId1").orElse(0L)
+        tag.putVector3d("pos0", centerPositions[shipId0]!!.let { (old, new) -> tag.getVector3d("pos0")!!.sub(old).add(new) })
+        tag.putVector3d("pos1", centerPositions[shipId1]!!.let { (old, new) -> tag.getVector3d("pos1")!!.sub(old).add(new) })
+        tag.putLong("shipId0", oldShipIdToNewId[shipId0]!!)
+        tag.putLong("shipId1", oldShipIdToNewId[shipId1]!!)
 
         return tag
     }

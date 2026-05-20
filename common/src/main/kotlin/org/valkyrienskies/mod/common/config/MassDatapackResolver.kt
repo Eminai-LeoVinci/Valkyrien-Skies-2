@@ -298,7 +298,8 @@ object MassDatapackResolver : BlockStateInfoProvider {
         val dummyBlockGetter = object: BlockGetter {
             override fun getHeight(): Int = 255
 
-            override fun getMinBuildHeight(): Int = 0
+            // 1.21.11: LevelHeightAccessor.getMinBuildHeight() renamed to getMinY()
+            override fun getMinY(): Int = 0
 
             override fun getBlockEntity(blockPos: BlockPos): BlockEntity? = null
 

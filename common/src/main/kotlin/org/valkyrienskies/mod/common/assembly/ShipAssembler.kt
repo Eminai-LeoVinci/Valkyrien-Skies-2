@@ -47,6 +47,7 @@ import org.valkyrienskies.mod.common.vsCore
 import org.valkyrienskies.mod.common.yRange
 import org.valkyrienskies.mod.util.AIR
 import org.valkyrienskies.mod.util.StructureTemplateFillFromVoxelSet
+import org.valkyrienskies.mod.util.loadFromTag
 import org.valkyrienskies.mod.util.logger
 
 object ShipAssembler {
@@ -247,7 +248,7 @@ object ShipAssembler {
                     if (it is Clearable) {
                         it.clearContent()
                     } else {
-                        it.loadWithComponents(CompoundTag(), level.registryAccess())
+                        it.loadFromTag(CompoundTag(), level.registryAccess())
                     }
                     level.removeBlockEntity(pos)
                 }
@@ -462,7 +463,7 @@ object ShipAssembler {
         // Add tickets for all dest chunks first (non-blocking, just queues them)
         for (cp in allDestChunkPoses) {
             chunkSource.addTicketWithRadius(
-                org.valkyrienskies.mod.common.world.VSTicketType.SHIP_CHUNK, cp, 0, cp
+                org.valkyrienskies.mod.common.world.VSTicketType.SHIP_CHUNK, cp, 0
             )
         }
 
@@ -549,19 +550,19 @@ object ShipAssembler {
                         level.removeBlockEntity(srcPos)
                     }
                     val srcChunk = level.getChunkAt(srcPos)
-                    srcChunk.setBlockState(srcPos, Blocks.AIR.defaultBlockState(), false)
+                    srcChunk.setBlockState(srcPos, Blocks.AIR.defaultBlockState(), 0)
 
                     // Place at destination using chunk-level setBlockState directly.
                     // This bypasses Level.setBlock's sendBlockUpdated + onBlockStateChange
                     // which are unnecessary while dest chunks are stalled.
                     // LevelChunk.setBlockState handles block entity creation internally.
                     val destChunk = level.getChunkAt(destPos)
-                    destChunk.setBlockState(destPos, state, false)
+                    destChunk.setBlockState(destPos, state, 0)
                     beTag?.let { tag ->
                         tag.putInt("x", destPos.x)
                         tag.putInt("y", destPos.y)
                         tag.putInt("z", destPos.z)
-                        level.getBlockEntity(destPos)?.loadWithComponents(tag, level.registryAccess())
+                        level.getBlockEntity(destPos)?.loadFromTag(tag, level.registryAccess())
                     }
                 }
 

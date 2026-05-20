@@ -37,8 +37,10 @@ object TestThrusterBlock : DirectionalBlock(Properties.of().strength(10.0f, 1200
         )
     }
 
+    // 1.21.11: neighborChanged's 5th param is now Orientation? (redstone wire orientation), not BlockPos.
     override fun neighborChanged(
-        blockState: BlockState, level: Level, blockPos: BlockPos, block: Block, blockPos2: BlockPos, bl: Boolean
+        blockState: BlockState, level: Level, blockPos: BlockPos, block: Block,
+        orientation: net.minecraft.world.level.redstone.Orientation?, bl: Boolean
     ) {
         if (!level.isClientSide) {
             val previouslyPowered = blockState.getValue<Boolean>(BlockStateProperties.POWERED)

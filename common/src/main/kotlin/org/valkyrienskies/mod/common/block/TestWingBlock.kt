@@ -81,7 +81,7 @@ class TestWingBlock() :
         val wingBreakingForce = null
         val wingCamberAttackAngleBias = Math.toRadians(10.0)
         return Wing(
-            blockState.getValue(FACING).normal.toJOMLD(), wingPower, wingDrag, wingBreakingForce,
+            blockState.getValue(FACING).unitVec3i.toJOMLD(), wingPower, wingDrag, wingBreakingForce,
             wingCamberAttackAngleBias
         )
     }

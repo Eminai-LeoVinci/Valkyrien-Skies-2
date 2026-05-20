@@ -27,10 +27,11 @@ class ShipSavedData : SavedData() {
             val logger = org.slf4j.LoggerFactory.getLogger("VS2")
             val data = ShipSavedData()
 
-            // Read bytes from the [CompoundTag]
-            val queryableShipDataAsBytes = compoundTag.getByteArray(QUERYABLE_SHIP_DATA_NBT_KEY)
-            val chunkAllocatorAsBytes = compoundTag.getByteArray(CHUNK_ALLOCATOR_NBT_KEY)
-            val pipelineAsBytes = compoundTag.getByteArray(PIPELINE_NBT_KEY)
+            // Read bytes from the [CompoundTag] (1.21.11: getByteArray returns Optional)
+            val empty = ByteArray(0)
+            val queryableShipDataAsBytes = compoundTag.getByteArray(QUERYABLE_SHIP_DATA_NBT_KEY).orElse(empty)
+            val chunkAllocatorAsBytes = compoundTag.getByteArray(CHUNK_ALLOCATOR_NBT_KEY).orElse(empty)
+            val pipelineAsBytes = compoundTag.getByteArray(PIPELINE_NBT_KEY).orElse(empty)
 
             logger.info(" ShipSavedData.load(): pipeline bytes = {} KB, legacy queryable = {} KB, legacy allocator = {} KB",
                 pipelineAsBytes.size / 1024, queryableShipDataAsBytes.size / 1024, chunkAllocatorAsBytes.size / 1024)

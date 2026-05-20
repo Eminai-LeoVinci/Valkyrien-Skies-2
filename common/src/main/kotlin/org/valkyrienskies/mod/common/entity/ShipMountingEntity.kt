@@ -1,16 +1,18 @@
 package org.valkyrienskies.mod.common.entity
 
 import net.minecraft.client.Minecraft
-import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
 import net.minecraft.network.syncher.SynchedEntityData
 import net.minecraft.server.level.ServerEntity
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.LivingEntity
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.storage.ValueInput
+import net.minecraft.world.level.storage.ValueOutput
 import net.minecraft.world.phys.Vec3
 import org.joml.Vector3f
 import org.valkyrienskies.core.api.ships.LoadedServerShip
@@ -37,9 +39,10 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
 
     override fun tick() {
         super.tick()
-        if (!level().isClientSide && passengers.isEmpty()) {
-            // Kill this entity if nothing is riding it
-            kill()
+        val lvl = level()
+        if (lvl is ServerLevel && passengers.isEmpty()) {
+            // Kill this entity if nothing is riding it (1.21.11: kill() now takes a ServerLevel)
+            kill(lvl)
             return
         }
 
@@ -71,9 +74,15 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
         return super.getDismountLocationForPassenger(livingEntity)
     }
 
-    override fun readAdditionalSaveData(compound: CompoundTag) {}
+    // 1.21.11: these now take ValueInput/ValueOutput instead of CompoundTag. Bodies stay empty —
+    // ShipMountingEntity has no persistent state worth saving (it's recreated on ship mount).
+    override fun readAdditionalSaveData(input: ValueInput) {}
 
-    override fun addAdditionalSaveData(compound: CompoundTag) {}
+    override fun addAdditionalSaveData(output: ValueOutput) {}
+
+    // 1.21.11: Entity declares abstract hurtServer. ShipMountingEntity is an invisible mount
+    // point — it can't be damaged.
+    override fun hurtServer(serverLevel: ServerLevel, damageSource: net.minecraft.world.damagesource.DamageSource, f: Float): Boolean = false
 
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {}
 
