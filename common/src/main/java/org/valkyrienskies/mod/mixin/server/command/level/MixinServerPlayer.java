@@ -5,7 +5,7 @@ import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import org.joml.Vector3d;
@@ -22,16 +22,15 @@ import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
 @Mixin(ServerPlayer.class)
 public abstract class MixinServerPlayer extends Player {
 
-    public MixinServerPlayer(Level level, BlockPos blockPos, float f,
-        GameProfile gameProfile) {
-        super(level, blockPos, f, gameProfile);
+    public MixinServerPlayer(Level level, GameProfile gameProfile) {
+        super(level, gameProfile);
     }
 
     @Shadow
     public abstract void teleportTo(double d, double e, double f);
 
     @Shadow
-    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<RelativeMovement> set, float g, float h);
+    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h);
 
     @Inject(
         at = @At("HEAD"),

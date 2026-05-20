@@ -6,7 +6,7 @@ import java.util.Comparator;
 import java.util.Optional;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -49,7 +49,7 @@ public abstract class MixinPollinateGoal {
         }
     }
 
-    @WrapOperation(method = "findNearestBlock", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/Bee;blockPosition()Lnet/minecraft/core/BlockPos;"))
+    @WrapOperation(method = "findNearestBlock", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/bee/Bee;blockPosition()Lnet/minecraft/core/BlockPos;"))
     private BlockPos onBlockPosition(Bee instance, Operation<BlockPos> original) {
         return modifiedBeePosition;
     }

@@ -21,11 +21,11 @@ accessible  class   net/minecraft/server/level/ChunkMap$DistanceManager
 
 accessible  class   net/minecraft/world/entity/ai/behavior/AcquirePoi$JitteredLinearRetry
 
-accessible  class   net/minecraft/world/entity/animal/Bee$BeePollinateGoal
-accessible  class   net/minecraft/world/entity/animal/Bee$BeeEnterHiveGoal
-accessible  class   net/minecraft/world/entity/animal/Bee$BeeLocateHiveGoal
-accessible  class   net/minecraft/world/entity/animal/Bee$BeeGrowCropGoal
-accessible  class   net/minecraft/world/entity/animal/Bee$BaseBeeGoal
+accessible  class   net/minecraft/world/entity/animal/bee/Bee$BeePollinateGoal
+accessible  class   net/minecraft/world/entity/animal/bee/Bee$BeeEnterHiveGoal
+accessible  class   net/minecraft/world/entity/animal/bee/Bee$BeeLocateHiveGoal
+accessible  class   net/minecraft/world/entity/animal/bee/Bee$BeeGrowCropGoal
+accessible  class   net/minecraft/world/entity/animal/bee/Bee$BaseBeeGoal
 
 # For flywheel lighting engine
 mutable field   net/minecraft/world/level/lighting/LevelLightEngine   blockEngine    Lnet/minecraft/world/level/lighting/LightEngine;
@@ -43,3 +43,7 @@ accessible method net/minecraft/server/level/TicketType register (Ljava/lang/Str
 accessible field net/minecraft/server/level/ServerPlayer server Lnet/minecraft/server/MinecraftServer;
 # KeyMapping.Category.register became package-private; widen so VSKeyBindings can wrap String -> Category.
 accessible method net/minecraft/client/KeyMapping$Category register (Ljava/lang/String;)Lnet/minecraft/client/KeyMapping$Category;
+# Level.isClientSide field is private now; many feature mixins read it directly.
+accessible field net/minecraft/world/level/Level isClientSide Z
+# Player.STANDING_DIMENSIONS moved to Avatar and is protected; MixinClientLevel reads it.
+accessible field net/minecraft/world/entity/Avatar STANDING_DIMENSIONS Lnet/minecraft/world/entity/EntityDimensions;

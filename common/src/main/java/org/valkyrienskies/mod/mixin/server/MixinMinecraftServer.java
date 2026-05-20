@@ -8,8 +8,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import kotlin.Unit;
-import net.minecraft.BlockUtil;
+import com.mojang.serialization.Codec;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.BlockUtil;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -22,7 +24,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.portal.PortalShape;
-import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -123,12 +125,19 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
             ValkyrienSkiesMod.getVsCore().registerBlockStates(MassDatapackResolver.INSTANCE.getBlockStateData());
         }
 
-        final SavedData.Factory<ShipSavedData> factory =
-            new SavedData.Factory<>(ShipSavedData.Companion::createEmpty, (tag, provider) -> ShipSavedData.load(tag),
-                DataFixTypes.LEVEL);
+        // 1.21.11: SavedData persistence is codec-driven via SavedDataType. ShipSavedData
+        // round-trips through a CompoundTag (see ShipSavedData.load / saveToTag).
+        final Codec<ShipSavedData> shipSavedDataCodec = CompoundTag.CODEC.xmap(
+            ShipSavedData::load,
+            data -> data.saveToTag(new CompoundTag()));
+        final SavedDataType<ShipSavedData> savedDataType = new SavedDataType<>(
+            ShipSavedData.SAVED_DATA_ID,
+            ShipSavedData.Companion::createEmpty,
+            shipSavedDataCodec,
+            DataFixTypes.LEVEL);
         // Load ship data from the world storage
         final ShipSavedData shipSavedData = overworld().getDataStorage()
-            .computeIfAbsent(factory, ShipSavedData.SAVED_DATA_ID);
+            .computeIfAbsent(savedDataType);
 
         // If there was an error deserializing, re-throw it here so that the game actually crashes.
         // We would prefer to crash the game here than allow the player keep playing with everything corrupted.

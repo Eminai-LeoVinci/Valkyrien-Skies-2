@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.Unique;
 import java.util.List;
 import org.valkyrienskies.core.api.ships.ServerShip;
 import org.valkyrienskies.mod.common.assembly.ICopyableBlock;
+import org.valkyrienskies.mod.util.BlockEntityNbtCompatKt;
 import org.valkyrienskies.mod.util.StructureTemplateFillFromVoxelSet;
 
 @Mixin(value = StructureTemplate.class)
@@ -69,7 +70,8 @@ public abstract class StructureTemplateMixin implements StructureTemplateFillFro
             if (customTag != null) {
                 blockInfo = new StructureTemplate.StructureBlockInfo(relativePos, blockState, customTag);
             } else if (blockEntity != null) {
-                blockInfo = new StructureTemplate.StructureBlockInfo(relativePos, blockState, blockEntity.saveWithId(level.registryAccess()));
+                blockInfo = new StructureTemplate.StructureBlockInfo(relativePos, blockState,
+                    BlockEntityNbtCompatKt.saveToTag(blockEntity, level.registryAccess()));
             } else {
                 blockInfo = new StructureTemplate.StructureBlockInfo(relativePos, blockState, null);
             }

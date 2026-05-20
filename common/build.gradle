@@ -109,6 +109,11 @@ sourceSets {
             // 1.21.11 probe: exclude compat mixins whose target mods have no 1.21.11 build
             exclude "org/valkyrienskies/mod/mixin/mod_compat/cc_tweaked/**"
             exclude "org/valkyrienskies/mod/mixin/mod_compat/sable/**"
+            exclude "org/valkyrienskies/mod/mixin/mod_compat/sableCompanion/**"
+            // vanilla_renderer compat targets the pre-1.21.5 shader API (Uniform/VertexBuffer/ShaderInstance), all removed
+            exclude "org/valkyrienskies/mod/mixin/mod_compat/vanilla_renderer/**"
+            // Create has no 1.21.11 build; this class references Create's CopycatBlock/BlockPickInteractionAware
+            exclude "org/valkyrienskies/mod/compat/create/AirFlowClipContext.java"
         }
         kotlin {
             exclude "org/valkyrienskies/mod/compat/hexcasting/**"

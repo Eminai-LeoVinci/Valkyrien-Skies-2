@@ -26,9 +26,8 @@ public abstract class MixinServerPlayer extends Player {
     @Shadow
     public abstract ServerLevel serverLevel();
 
-    public MixinServerPlayer(final Level level, final BlockPos blockPos, final float f,
-        final GameProfile gameProfile) {
-        super(level, blockPos, f, gameProfile);
+    public MixinServerPlayer(final Level level, final GameProfile gameProfile) {
+        super(level, gameProfile);
         throw new IllegalStateException("Unreachable");
     }
 
@@ -40,7 +39,7 @@ public abstract class MixinServerPlayer extends Player {
         if (!compoundTag.contains("LastShipId"))
             return; // Player did not disconnect off of any ship
 
-        final long lastShipId = compoundTag.getLong("LastShipId");
+        final long lastShipId = compoundTag.getLong("LastShipId").orElse(0L);
 
         final Ship ship = VSGameUtilsKt.getShipObjectWorld(serverLevel()).getAllShips().getById(lastShipId);
         // Don't teleport if the ship doesn't exist anymore
@@ -48,9 +47,9 @@ public abstract class MixinServerPlayer extends Player {
             return;
 
         // Translate ship coords to world coords
-        final double x = compoundTag.getDouble("RelativeShipX");
-        final double y = compoundTag.getDouble("RelativeShipY");
-        final double z = compoundTag.getDouble("RelativeShipZ");
+        final double x = compoundTag.getDouble("RelativeShipX").orElse(0.0);
+        final double y = compoundTag.getDouble("RelativeShipY").orElse(0.0);
+        final double z = compoundTag.getDouble("RelativeShipZ").orElse(0.0);
 
         final Vector3d playerShipPosition = new Vector3d(x, y, z);
         final Vector3d playerWorldPosition = ship.getShipToWorld().transformPosition(playerShipPosition);

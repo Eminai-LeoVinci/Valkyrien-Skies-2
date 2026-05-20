@@ -56,7 +56,7 @@ public class MixinMob implements ShipyardPosSavable {
     @Inject(method = "readAdditionalSaveData", at = @At("RETURN"))
     public void readAdditionalSaveData(CompoundTag nbt, CallbackInfo info) {
         if (nbt.contains("valkyrienskies$unloadedX") && nbt.contains("valkyrienskies$unloadedY") && nbt.contains("valkyrienskies$unloadedZ")) {
-            double[] xyz = {nbt.getDouble("valkyrienskies$unloadedX"), nbt.getDouble("valkyrienskies$unloadedY"), nbt.getDouble("valkyrienskies$unloadedZ")};
+            double[] xyz = {nbt.getDouble("valkyrienskies$unloadedX").orElse(0.0), nbt.getDouble("valkyrienskies$unloadedY").orElse(0.0), nbt.getDouble("valkyrienskies$unloadedZ").orElse(0.0)};
             this.valkyrienskies$setUnloadedShipyardPos(new Vector3d(xyz));
         }
     }

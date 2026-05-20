@@ -17,7 +17,7 @@ import net.minecraft.server.level.ServerPlayerGameMode;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
 import org.spongepowered.asm.mixin.Mixin;
@@ -140,7 +140,7 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
         cancellable = true
     )
     private void transformTeleport(final double x, final double y, final double z, final float yaw, final float pitch,
-        final Set<RelativeMovement> relativeSet, final CallbackInfo ci) {
+        final Set<Relative> relativeSet, final CallbackInfo ci) {
 
         if (!VSGameConfig.SERVER.getTransformTeleports()) {
             return;

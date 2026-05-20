@@ -10,7 +10,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Entity.RemovalReason;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.RelativeMovement;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -46,7 +46,7 @@ public abstract class MixinEntity {
     public abstract void teleportTo(double d, double e, double f);
 
     @Shadow
-    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<RelativeMovement> set, float g, float h);
+    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h);
 
     @Shadow
     public abstract EntityType<?> getType();
@@ -115,7 +115,7 @@ public abstract class MixinEntity {
         method = "teleportTo(Lnet/minecraft/server/level/ServerLevel;DDDLjava/util/Set;FF)Z",
         cancellable = true
     )
-    private void beforeTeleportTo(ServerLevel serverLevel, double d, double e, double f, Set<RelativeMovement> set, float g, float h, final CallbackInfoReturnable<Boolean> ci) {
+    private void beforeTeleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h, final CallbackInfoReturnable<Boolean> ci) {
         if (isModifyingTeleport) {
             return;
         }

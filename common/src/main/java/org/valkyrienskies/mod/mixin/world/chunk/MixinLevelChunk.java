@@ -19,7 +19,6 @@ import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.ProtoChunk;
-import net.minecraft.world.level.chunk.storage.ChunkSerializer;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
@@ -136,59 +135,14 @@ public abstract class MixinLevelChunk extends ChunkAccess implements VSLevelChun
         this.unsaved = true;
     }
 
+    /**
+     * 1.21.11: this relied on ChunkSerializer.write/read, which were replaced by the
+     * SerializableChunkData API. Cross-dimension ship transfer is out of scope for the
+     * initial 1.21.11 port (helm + assembly); stubbed until SerializableChunkData is wired up.
+     */
     @Override
     public void copyChunkFromOtherDimension(@NotNull final VSLevelChunk srcChunkVS) {
-        clearAllBlockEntities();
-        unregisterTickContainerFromLevel((ServerLevel) level);
-
-        // Set terrain to empty
-        heightmaps.clear();
-        Arrays.fill(sections, null);
-
-        // Copy heightmap and sections and block entities from srcChunk
-        final LevelChunk srcChunk = (LevelChunk) srcChunkVS;
-        final CompoundTag compoundTag = ChunkSerializer.write((ServerLevel) srcChunk.getLevel(), srcChunk);
-        // Set status to be ProtoChunk to fix block entities not saving
-        compoundTag.putString("Status", BuiltInRegistries.CHUNK_STATUS.getKey(this.getPersistedStatus()).toString());
-        final RegionStorageInfo dummyInfo = new RegionStorageInfo("dummy", level.dimension(), "dummy");
-        final ProtoChunk protoChunk = ChunkSerializer.read((ServerLevel) level, ((ServerLevel) level).getPoiManager(), dummyInfo, chunkPos, compoundTag);
-
-        this.blockTicks = protoChunk.unpackBlockTicks();
-        this.fluidTicks = protoChunk.unpackFluidTicks();
-        // Copy data from the protoChunk
-        // this.chunkPos = chunkPos;
-        // this.upgradeData = upgradeData;
-        // this.levelHeightAccessor = levelHeightAccessor;
-
-        for (int i = 0; i < sections.length; i++) {
-            sections[i] = protoChunk.getSection(i);
-        }
-        final Registry<Biome> registry = level.registryAccess().registryOrThrow(Registries.BIOME);
-        for (int i = 0; i < sections.length; ++i) {
-            if (sections[i] != null) continue;
-            sections[i] = new LevelChunkSection(registry);
-        }
-
-        // this.inhabitedTime = l;
-        // this.postProcessing = new ShortList[levelHeightAccessor.getSectionsCount()];
-        this.blendingData = protoChunk.getBlendingData();
-
-        for (final BlockEntity blockEntity : protoChunk.getBlockEntities().values()) {
-            this.setBlockEntity(blockEntity);
-        }
-        this.pendingBlockEntities.putAll(protoChunk.getBlockEntityNbts());
-        for (int i = 0; i < protoChunk.getPostProcessing().length; ++i) {
-            this.postProcessing[i] = protoChunk.getPostProcessing()[i];
-        }
-        this.setAllStarts(protoChunk.getAllStarts());
-        this.setAllReferences(protoChunk.getAllReferences());
-
-        // Recompute height maps instead of getting them from protoChunk (This fixes crashes from missing height maps)
-        Heightmap.primeHeightmaps(this, ALL_HEIGHT_MAP_TYPES);
-        this.setLightCorrect(false);
-
-        registerTickContainerInLevel((ServerLevel) level);
-
-        this.unsaved = true;
+        throw new UnsupportedOperationException(
+            "copyChunkFromOtherDimension is not yet ported to 1.21.11 (SerializableChunkData)");
     }
 }

@@ -34,7 +34,7 @@ public interface MixinBlockGetter {
 
             final Vec3 vec3 = clipContext.getFrom().subtract(clipContext.getTo());
             return BlockHitResult.miss(
-                clipContext.getTo(), Direction.getNearest(vec3.x, vec3.y, vec3.z),
+                clipContext.getTo(), Direction.getApproximateNearest(vec3.x, vec3.y, vec3.z),
                 BlockPos.containing(clipContext.getTo())
             );
         } else {
