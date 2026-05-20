@@ -4,12 +4,12 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Registry
 import net.minecraft.core.component.DataComponentType
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import org.valkyrienskies.mod.common.ValkyrienSkiesMod
 
 object VSDataComponents {
     private fun <T> register(name: String, builder: () -> DataComponentType<T>): DataComponentType<T> {
-        val resourceLocation = ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, name)
+        val resourceLocation = Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, name)
         return Registry.register(
             BuiltInRegistries.DATA_COMPONENT_TYPE,
             resourceLocation,

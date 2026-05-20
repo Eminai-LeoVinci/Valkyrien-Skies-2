@@ -9,7 +9,7 @@ import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerPlayer
 import org.valkyrienskies.core.internal.hooks.VsiCoreHooksIn
 import org.valkyrienskies.core.internal.world.VsiPlayer
@@ -101,7 +101,7 @@ class VSPacket(internal val data: ByteArray) : CustomPacketPayload {
     override fun type() = VS_PACKET_TYPE
 
     companion object {
-        val VS_PACKET_RL: ResourceLocation = ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "vs_packet")
+        val VS_PACKET_RL: Identifier = Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "vs_packet")
         val VS_PACKET_TYPE = CustomPacketPayload.Type<VSPacket>(VS_PACKET_RL)
         val VS_PACKET_CODEC: StreamCodec<FriendlyByteBuf, VSPacket> = StreamCodec.composite(ByteBufCodecs.BYTE_ARRAY, VSPacket::data) {
             VSPacket(it)
@@ -113,7 +113,7 @@ class VSFragmentPacket(internal val data: ByteArray) : CustomPacketPayload {
     override fun type() = VS_FRAGMENT_TYPE
 
     companion object {
-        val VS_FRAGMENT_RL: ResourceLocation = ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "vs_fragment")
+        val VS_FRAGMENT_RL: Identifier = Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "vs_fragment")
         val VS_FRAGMENT_TYPE = CustomPacketPayload.Type<VSFragmentPacket>(VS_FRAGMENT_RL)
         val VS_FRAGMENT_CODEC: StreamCodec<FriendlyByteBuf, VSFragmentPacket> = StreamCodec.composite(ByteBufCodecs.BYTE_ARRAY, VSFragmentPacket::data) {
             VSFragmentPacket(it)

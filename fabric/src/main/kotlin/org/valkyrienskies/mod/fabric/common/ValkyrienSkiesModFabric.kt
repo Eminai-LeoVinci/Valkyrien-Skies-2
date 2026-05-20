@@ -13,9 +13,12 @@ import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.renderer.entity.EntityRendererProvider.Context
 import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
-import net.minecraft.resources.ResourceLocation
+import net.minecraft.core.registries.Registries
+import net.minecraft.resources.Identifier
+import net.minecraft.resources.ResourceKey
 import net.minecraft.server.packs.PackType.SERVER_DATA
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier
+import net.minecraft.server.packs.resources.PreparableReloadListener.SharedState
 import net.minecraft.server.packs.resources.ResourceManager
 import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.entity.EntityType
@@ -80,7 +83,8 @@ class ValkyrienSkiesModFabric : ModInitializer {
             ::ShipMountingEntity,
             MobCategory.MISC
         ).sized(.3f, .3f)
-            .build(ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_mounting_entity").toString())
+            .build(ResourceKey.create(Registries.ENTITY_TYPE,
+                Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_mounting_entity")))
 
         ValkyrienSkiesMod.TEST_HINGE_BLOCK_ENTITY_TYPE =
             FabricBlockEntityTypeBuilder.create(::TestHingeBlockEntity, ValkyrienSkiesMod.TEST_HINGE).build()
@@ -119,35 +123,35 @@ class ValkyrienSkiesModFabric : ModInitializer {
         registerBlockAndItem("test_flap", ValkyrienSkiesMod.TEST_FLAP)
         registerBlockAndItem("test_wing", ValkyrienSkiesMod.TEST_WING)
         Registry.register(
-            BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "connection_checker"),
+            BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "connection_checker"),
             ValkyrienSkiesMod.CONNECTION_CHECKER_ITEM
         )
         Registry.register(
-            BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "area_assembler"),
+            BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "area_assembler"),
             ValkyrienSkiesMod.AREA_ASSEMBLER_ITEM
         )
         Registry.register(
-            BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_assembler"),
+            BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_assembler"),
             ValkyrienSkiesMod.SHIP_ASSEMBLER_ITEM
         )
         Registry.register(
-            BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_creator"),
+            BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_creator"),
             ValkyrienSkiesMod.SHIP_CREATOR_ITEM
         )
         Registry.register(
-            BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_creator_smaller"),
+            BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_creator_smaller"),
             ValkyrienSkiesMod.SHIP_CREATOR_ITEM_SMALLER
         )
         Registry.register(
-            BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "physics_entity_creator"),
+            BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "physics_entity_creator"),
             ValkyrienSkiesMod.PHYSICS_ENTITY_CREATOR_ITEM
         )
         Registry.register(
-            BuiltInRegistries.ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_mounting_entity"),
+            BuiltInRegistries.ENTITY_TYPE, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "ship_mounting_entity"),
             ValkyrienSkiesMod.SHIP_MOUNTING_ENTITY_TYPE
         )
         Registry.register(
-            BuiltInRegistries.BLOCK_ENTITY_TYPE, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "test_hinge_block_entity"),
+            BuiltInRegistries.BLOCK_ENTITY_TYPE, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "test_hinge_block_entity"),
             ValkyrienSkiesMod.TEST_HINGE_BLOCK_ENTITY_TYPE
         )
 
@@ -166,27 +170,20 @@ class ValkyrienSkiesModFabric : ModInitializer {
         val loader2 = VSEntityHandlerDataLoader // the get makes a new instance so get it only once
         ResourceManagerHelper.get(SERVER_DATA)
             .registerReloadListener(object : IdentifiableResourceReloadListener {
-                override fun getFabricId(): ResourceLocation {
-                    return ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "vs_mass")
+                override fun getFabricId(): Identifier {
+                    return Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, "vs_mass")
                 }
 
                 override fun reload(
-                    stage: PreparationBarrier,
-                    resourceManager: ResourceManager,
-                    preparationsProfiler: ProfilerFiller,
-                    reloadProfiler: ProfilerFiller,
+                    sharedState: SharedState,
                     backgroundExecutor: Executor,
+                    barrier: PreparationBarrier,
                     gameExecutor: Executor
                 ): CompletableFuture<Void> {
-                    return loader1.reload(
-                        stage, resourceManager, preparationsProfiler, reloadProfiler,
-                        backgroundExecutor, gameExecutor
-                    ).thenAcceptBoth(
-                        loader2.reload(
-                            stage, resourceManager, preparationsProfiler, reloadProfiler,
-                            backgroundExecutor, gameExecutor
-                        )
-                    ) { _, _ -> }
+                    return loader1.reload(sharedState, backgroundExecutor, barrier, gameExecutor)
+                        .thenAcceptBoth(
+                            loader2.reload(sharedState, backgroundExecutor, barrier, gameExecutor)
+                        ) { _, _ -> }
                 }
             })
         CommonLifecycleEvents.TAGS_LOADED.register { _, _ ->
@@ -215,11 +212,11 @@ class ValkyrienSkiesModFabric : ModInitializer {
 
     private fun registerBlockAndItem(registryName: String, block: Block): Item {
         Registry.register(
-            BuiltInRegistries.BLOCK, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, registryName),
+            BuiltInRegistries.BLOCK, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, registryName),
             block
         )
         val item = BlockItem(block, Properties())
-        Registry.register(BuiltInRegistries.ITEM, ResourceLocation.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, registryName), item)
+        Registry.register(BuiltInRegistries.ITEM, Identifier.fromNamespaceAndPath(ValkyrienSkiesMod.MOD_ID, registryName), item)
         return item
     }
 }
