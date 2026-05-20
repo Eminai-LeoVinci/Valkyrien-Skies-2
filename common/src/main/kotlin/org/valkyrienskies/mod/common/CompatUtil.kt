@@ -113,18 +113,18 @@ object CompatUtil {
     }
 
     fun getWorldHeightIncludingShips(level: Level, types: Types, x: Int, z: Int): Int =
-        getWorldHeightmapPosIncludingShips(level, types, BlockPos(x, level.minBuildHeight, z)).y
+        getWorldHeightmapPosIncludingShips(level, types, BlockPos(x, level.minY, z)).y
 
     fun getShipHeightmapPosAboveWorldHeight(level: Level, types: Types, worldHeight: BlockPos): BlockPos? {
         return getShipHeightmapHitAboveWorldHeight(level, types, worldHeight)?.blockPos?.immutable()
     }
 
     fun getShipHeightmapHitAboveWorldHeight(level: Level, types: Types, worldHeight: BlockPos): BlockHitResult? {
-        if (worldHeight.y >= level.maxBuildHeight) {
+        if (worldHeight.y >= level.maxY) {
             return null
         }
 
-        val start = Vec3(worldHeight.x + 0.5, level.maxBuildHeight.toDouble(), worldHeight.z + 0.5)
+        val start = Vec3(worldHeight.x + 0.5, level.maxY.toDouble(), worldHeight.z + 0.5)
         val end = worldHeight.center
         if (types == Types.MOTION_BLOCKING_NO_LEAVES) {
             return clipAboveWorldHeightIgnoringLeafHits(level, start, end)

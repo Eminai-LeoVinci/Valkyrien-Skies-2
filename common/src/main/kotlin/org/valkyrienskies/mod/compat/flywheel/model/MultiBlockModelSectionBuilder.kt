@@ -42,7 +42,7 @@ class MultiBlockModelSectionBuilder : FlywheelSectionModelBuilder {
 
     private fun wrapLevel(lvl: ClientLevel, lightEngine: LevelLightEngine, origin: Vec3i) = object : BlockAndTintGetter {
         override fun getHeight(): Int = lvl.height
-        override fun getMinBuildHeight(): Int = lvl.minBuildHeight
+        override fun getMinBuildHeight(): Int = lvl.minY
         override fun getBlockEntity(blockPos: BlockPos): BlockEntity? =
             lvl.getBlockEntity(blockPos.offset(origin))
 

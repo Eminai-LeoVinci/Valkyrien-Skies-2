@@ -36,7 +36,9 @@ import org.valkyrienskies.mod.common.hooks.VSGameEvents
 import org.valkyrienskies.mod.common.vsCore
 import org.valkyrienskies.mod.mixin.accessors.world.level.block.SlabBlockAccessor
 import org.valkyrienskies.mod.mixin.accessors.world.level.block.StairBlockAccessor
+import org.valkyrienskies.mod.util.VS_JSON_CODEC
 import org.valkyrienskies.mod.util.logger
+import org.valkyrienskies.mod.util.vsJsonListerFor
 import java.util.Optional
 import kotlin.math.roundToInt
 
@@ -72,7 +74,7 @@ object MassDatapackResolver : BlockStateInfoProvider {
     var registeredBlocks = false
         private set
 
-    class VSMassDataLoader : SimpleJsonResourceReloadListener(Gson(), "vs_mass") {
+    class VSMassDataLoader : SimpleJsonResourceReloadListener<JsonElement>(VS_JSON_CODEC, vsJsonListerFor("vs_mass")) {
         private val tags = mutableListOf<VSBlockStateInfo>()
 
         override fun apply(
@@ -100,8 +102,9 @@ object MassDatapackResolver : BlockStateInfoProvider {
         init {
             VSGameEvents.tagsAreLoaded.on { _, _ ->
                 tags.forEach { tagInfo ->
+                    // 1.21.11: Registry.getTag(TagKey) renamed to get(TagKey)
                     val tag: Optional<HolderSet.Named<Block>>? =
-                        BuiltInRegistries.BLOCK.getTag(TagKey.create(Registries.BLOCK, tagInfo.id))
+                        BuiltInRegistries.BLOCK.get(TagKey.create(Registries.BLOCK, tagInfo.id))
                     if (tag != null) {
 
                         if (!tag.isPresent) {

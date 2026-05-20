@@ -13,6 +13,6 @@ class DeployerScrollOptionSlot(allowedDirections: BiPredicate<BlockState, Direct
     DirectionalExtenderScrollOptionSlot(allowedDirections) {
     override fun getLocalOffset(level: LevelAccessor, pos: BlockPos, state: BlockState): Vec3 {
         return super.getLocalOffset(level, pos, state)
-            .add(Vec3.atLowerCornerOf(state.getValue(BlockStateProperties.FACING).normal).scale((-4 / 16f).toDouble()))
+            .add(Vec3.atLowerCornerOf(state.getValue(BlockStateProperties.FACING).unitVec3i).scale((-4 / 16f).toDouble()))
     }
 }

@@ -56,7 +56,7 @@ abstract class VSShipyardEntityDataProvider(val output: PackOutput, val modId: S
     protected fun addEntity(
         type: EntityType<*>
     ) {
-        addEntity(type.builtInRegistryHolder().key().location())
+        addEntity(type.builtInRegistryHolder().key().identifier())
     }
 
     override fun run(cachedOutput: CachedOutput): CompletableFuture<*> {

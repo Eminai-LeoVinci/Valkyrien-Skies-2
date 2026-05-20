@@ -30,7 +30,7 @@ class EmbeddingShipVisual(val effect: ShipEffect, val visualContext: Visualizati
     val ship get() = effect.ship
     val embedding = visualContext.createEmbedding(
         effect.ship.chunkClaim.getCenterBlockCoordinates(
-            LevelYRange(effect.level.minBuildHeight, effect.level.maxBuildHeight - 1)
+            LevelYRange(effect.level.minY, effect.level.maxY - 1)
         ).toBlockPos()
     )
     val camera = ShipEffectCamera(ship)

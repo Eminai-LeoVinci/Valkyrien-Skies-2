@@ -1,6 +1,5 @@
 package org.valkyrienskies.mod.common.config
 
-import com.google.gson.Gson
 import com.google.gson.JsonElement
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.Identifier
@@ -8,9 +7,11 @@ import net.minecraft.server.packs.resources.ResourceManager
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener
 import net.minecraft.util.profiling.ProfilerFiller
 import org.valkyrienskies.mod.common.entity.handling.VSEntityManager
+import org.valkyrienskies.mod.util.VS_JSON_CODEC
 import org.valkyrienskies.mod.util.logger
+import org.valkyrienskies.mod.util.vsJsonListerFor
 
-object VSEntityHandlerDataLoader : SimpleJsonResourceReloadListener(Gson(), "vs_entities") {
+object VSEntityHandlerDataLoader : SimpleJsonResourceReloadListener<JsonElement>(VS_JSON_CODEC, vsJsonListerFor("vs_entities")) {
 
     override fun apply(
         list: MutableMap<Identifier, JsonElement>,

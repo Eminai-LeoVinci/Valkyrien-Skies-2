@@ -81,7 +81,7 @@ abstract class VSBlockInfoDataProvider(val output: PackOutput, val modId: String
         elasticity: Double? = null,
         priority: Int? = null
     ) {
-        addBlock(block.builtInRegistryHolder().key().location(), mass, friction, elasticity, priority)
+        addBlock(block.builtInRegistryHolder().key().identifier(), mass, friction, elasticity, priority)
     }
 
     /**

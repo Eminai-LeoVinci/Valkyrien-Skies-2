@@ -59,12 +59,18 @@ class ShipSavedData : SavedData() {
     var loadingException: Throwable? = null
         private set
 
-    override fun save(compoundTag: CompoundTag, provider: HolderLookup.Provider): CompoundTag {
+    /**
+     * Serialize the ship pipeline to a [CompoundTag].
+     *
+     * 1.21.11: [SavedData] no longer has an overridable `save(CompoundTag, Provider)` — persistence
+     * is now driven by a `SavedDataType` + `Codec` registered at the data-storage call site.
+     * This is kept as a plain method; the codec/SavedDataType wiring lives in MixinMinecraftServer.
+     */
+    fun saveToTag(compoundTag: CompoundTag): CompoundTag {
         val logger = org.slf4j.LoggerFactory.getLogger("VS2")
         val bytes = vsCore.serializePipeline(pipeline)
         logger.info(" ShipSavedData.save(): pipeline bytes = {} KB", bytes.size / 1024)
         compoundTag.putByteArray(PIPELINE_NBT_KEY, bytes)
-
         return compoundTag
     }
 
