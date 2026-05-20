@@ -162,8 +162,10 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
             this.player.absSnapTo(pos.x, pos.y, pos.z, yaw, pitch);
 
             this.send(
-                new ClientboundPlayerPositionPacket(pos.x, pos.y, pos.z, yaw, pitch, Collections.emptySet(),
-                    awaitingTeleport));
+                new ClientboundPlayerPositionPacket(awaitingTeleport,
+                    new net.minecraft.world.entity.PositionMoveRotation(
+                        new Vec3(pos.x, pos.y, pos.z), Vec3.ZERO, yaw, pitch),
+                    Collections.emptySet()));
             ci.cancel();
         }
     }

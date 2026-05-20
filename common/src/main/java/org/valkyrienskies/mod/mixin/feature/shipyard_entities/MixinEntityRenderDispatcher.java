@@ -78,7 +78,9 @@ public class MixinEntityRenderDispatcher {
             final double camY = y - entityPosition.y;
             final double camZ = z - entityPosition.z;
 
-            final Vec3 offset = entityRenderer.getRenderOffset(entity, partialTicks);
+            // 1.21.5: EntityRenderer.getRenderOffset now takes the render state, not (entity, partialTicks).
+            // This whole render() inject needs the render-pipeline port; ZERO offset until then.
+            final Vec3 offset = Vec3.ZERO;
             final Vector3dc scale = renderTransform.getShipToWorldScaling();
 
             matrixStack.translate(transformed.x() + camX, transformed.y() + camY, transformed.z() + camZ);
@@ -122,7 +124,7 @@ public class MixinEntityRenderDispatcher {
             final ClientShip ship =
                 (ClientShip) VSGameUtilsKt.getLoadedShipManagingPos(entity.level(), entity.blockPosition());
             if (ship != null) {
-                AABB aABB = entity.getBoundingBoxForCulling().inflate(0.5);
+                AABB aABB = entity.getBoundingBox().inflate(0.5);
                 if (aABB.hasNaN() || aABB.getSize() == 0.0) {
                     aABB = new AABB(entity.getX() - 2.0, entity.getY() - 2.0,
                         entity.getZ() - 2.0, entity.getX() + 2.0,
