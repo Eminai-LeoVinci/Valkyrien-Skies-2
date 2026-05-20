@@ -52,7 +52,9 @@ public abstract class FireMixin {
 
             final int i = state.getValue(AGE);
 
-            final boolean bl2 = level.getBiome(newPos).is(BiomeTags.INCREASED_FIRE_BURNOUT);
+            // 1.21.x: INCREASED_FIRE_BURNOUT moved from BiomeTags to the EnvironmentAttributes
+            // system; the biome-specific burnout-rate tweak is dropped for the port.
+            final boolean bl2 = false;
             final int k = bl2 ? -50 : 0;
             this.checkBurnOut(level, newPos.east(), 300 + k, random, i);
             this.checkBurnOut(level, newPos.west(), 300 + k, random, i);

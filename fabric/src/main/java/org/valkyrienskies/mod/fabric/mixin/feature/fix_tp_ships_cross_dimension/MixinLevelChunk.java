@@ -12,6 +12,7 @@ import net.minecraft.world.level.block.entity.TickingBlockEntity;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import net.minecraft.world.level.chunk.UpgradeData;
 import net.minecraft.world.level.levelgen.blending.BlendingData;
 import org.jetbrains.annotations.Nullable;
@@ -25,7 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = LevelChunk.class, priority = 1500)
 public abstract class MixinLevelChunk extends ChunkAccess {
 
-    public MixinLevelChunk(ChunkPos arg, UpgradeData arg2, LevelHeightAccessor arg3, Registry<Biome> arg4, long l, @Nullable LevelChunkSection[] args, @Nullable BlendingData arg5) {
+    public MixinLevelChunk(ChunkPos arg, UpgradeData arg2, LevelHeightAccessor arg3, PalettedContainerFactory arg4, long l, @Nullable LevelChunkSection[] args, @Nullable BlendingData arg5) {
         super(arg, arg2, arg3, arg4, l, args, arg5);
     }
 
