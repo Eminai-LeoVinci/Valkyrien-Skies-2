@@ -41,6 +41,13 @@ dependencyLocking {
     lockAllConfigurations()
 }
 
+// VS2's Sodium-compat shims compile against Sodium 0.8.11's API as a compile-only dependency at
+// libs/sodium-fabric-0.8.11-loompatched.jar (gitignored; wired up in common/ + fabric/build.gradle).
+// That jar is Sodium 0.8.11 with the single manifest field `Fabric-Loom-Version` rewritten from 1.16.1
+// down to 1.14.473 so Architectury Loom 1.14.473 will consume it (bytecode unchanged). Provide that jar
+// in libs/ before building. It is compile-only and never ships in our output; players install Sodium
+// themselves at runtime.
+
 tasks.register("updateVsCore") {
     File versionFile = null
     File gradleProperties = file("gradle.properties")

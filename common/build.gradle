@@ -13,8 +13,9 @@ dependencies {
     modCompileOnly "fuzs.forgeconfigapiport:forgeconfigapiport-common:${rootProject.fcap_version}"
 
     // Sodium 0.8.11 ships built with Fabric Loom 1.16.1; VS2's Architectury Loom 1.14.473
-    // rejects deps built with a newer Loom. Use a local copy with Fabric-Loom-Version patched
-    // down (libs/) so Loom will consume it — we only need Sodium's API to compile against.
+    // rejects deps built with a newer Loom. We only need Sodium's API to compile against, so a
+    // copy with the Fabric-Loom-Version field rewritten down is kept in libs/ (gitignored,
+    // provided manually). See the note in the root build.gradle.
     modCompileOnly(files("$rootDir/libs/sodium-fabric-0.8.11-loompatched.jar"))
 
     // Alex Caves
