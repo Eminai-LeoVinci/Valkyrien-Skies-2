@@ -39,6 +39,49 @@ object EntityDragger {
         for (entity in entities) {
             val entityDraggingInformation = (entity as? IEntityDraggingInformationProvider)?.draggingInformation ?: continue
 
+            // === 2.4.115: Region-based gliding carry control ===
+            // Asymmetric carry semantics for elytra-gliding entities:
+            //   - Acquisition: ONLY via the collision-mixin path (EntityShipCollisionUtils
+            //     stamps lastShipStoodOn when entity physically collides with a ship voxel).
+            //     Vanilla MC ends fall-flying on solid contact, so the natural rejection
+            //     case (mid-air glider flying up through the ship's volume) almost never
+            //     triggers acquisition here.
+            //   - Retention while inside ship AABB: pin ticksSinceStoodOnShip = 0 each tick
+            //     so isEntityBeingDraggedByAShip() stays true and the position-drag (Mech 1)
+            //     continues to carry the glider with the ship's per-tick translation. The
+            //     velocity-push branch (Mech 2) is bypassed because the timer never expires.
+            //   - Release on exit: clear lastShipStoodOn and zero the buffered movement
+            //     immediately when the glider leaves the AABB. Prevents the velocity-push
+            //     branch from firing at all (no leftover buffered movement to push).
+            val isGliding = (entity as? LivingEntity)?.isFallFlying == true
+            val carriedShipId = entityDraggingInformation.lastShipStoodOn
+            if (isGliding && carriedShipId != null) {
+                val carriedShip = entity.level().shipObjectWorld.allShips.getById(carriedShipId)
+                val shipAABB = carriedShip?.shipAABB
+                val insideAABB = if (carriedShip != null && shipAABB != null) {
+                    val worldPos = entity.position()
+                    val shipLocalPos = carriedShip.worldToShip.transformPosition(
+                        worldPos.x, worldPos.y, worldPos.z, Vector3d()
+                    )
+                    shipAABB.containsPoint(
+                        shipLocalPos.x.toFloat(),
+                        shipLocalPos.y.toFloat(),
+                        shipLocalPos.z.toFloat()
+                    )
+                } else {
+                    false
+                }
+                if (insideAABB) {
+                    // Pin counter at 0: bypass 25-tick expiry, keep Mech 1 active.
+                    entityDraggingInformation.ticksSinceStoodOnShip = 0
+                } else {
+                    // Glider exited AABB — release carry immediately.
+                    entityDraggingInformation.lastShipStoodOn = null
+                    entityDraggingInformation.addedMovementLastTick = Vector3d()
+                    entityDraggingInformation.addedYawRotLastTick = 0.0
+                }
+            }
+
             var dragTheEntity = false
             var addedMovement: Vector3dc? = null
             var addedYRot = 0.0

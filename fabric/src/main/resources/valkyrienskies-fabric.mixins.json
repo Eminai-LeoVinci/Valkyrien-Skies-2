@@ -5,25 +5,22 @@
   "plugin": "org.valkyrienskies.mod.fabric.mixin.ValkyrienSkiesFabricMixinPlugin",
   "mixins": [
     "compat.cc_restitched.MixinWirelessModemPeripheral",
-    "compat.sodium.MixinRenderSectionManager",
     "compat.connectiblechains.MixinChainable",
     "compat.connectiblechains.MixinChainCollisionEntity",
     "entity.MixinContainerEntity",
     "feature.explosions.ClipContextMixin",
     "feature.fix_tp_ships_cross_dimension.MixinLevelChunk",
     "feature.shipyard_entities.MixinPersistentEntitySectionManager",
-    "compat.cc_restitched.MixinSpeakerSound",
     "feature.water_in_ships_entity.MixinEntity",
-    "world.level.block.FireMixin"
+    "compat.cc_restitched.MixinSpeakerSound"
   ],
   "client": [
     "compat.connectiblechains.client.MixinChainKnotEntityRenderer",
     "compat.emf.MixinEMFAnimationEntityContext",
-    "feature.duplicate_keybindings.KeyMappingAccessor",
-    "feature.duplicate_keybindings.MixinKeyMapping"
+    "compat.sodium.MixinRenderSectionManager"
   ],
   "injectors": {
-    "defaultRequire": 1
+    "defaultRequire": 0
   },
   "minVersion": "0.8"
 }

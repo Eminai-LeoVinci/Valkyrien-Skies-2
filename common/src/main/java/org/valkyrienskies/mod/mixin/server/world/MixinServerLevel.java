@@ -347,11 +347,11 @@ public abstract class MixinServerLevel implements IShipObjectWorldServerProvider
         final List<VsiTerrainUpdate> voxelShapeUpdates = new ArrayList<>();
         final DistanceManagerAccessor distanceManagerAccessor = (DistanceManagerAccessor) chunkSource.chunkMap.getDistanceManager();
 
-        for (final ChunkHolder chunkHolder : chunkMapAccessor.callGetChunks()) {
+        for (final ChunkHolder chunkHolder : chunkMapAccessor.getVisibleChunkMap().values()) {
             final ChunkResult<LevelChunk> worldChunkResult =
                 chunkHolder.getTickingChunkFuture().getNow(ChunkHolder.UNLOADED_LEVEL_CHUNK);
             if (vs$knownChunks.containsKey(chunkHolder.getPos())
-                || !distanceManagerAccessor.getTickets().containsKey(chunkHolder.getPos().toLong())) {
+                || distanceManagerAccessor.getTicketStorage().getTickets(chunkHolder.getPos().toLong()).isEmpty()) {
                 continue;
             }
 
@@ -377,7 +377,7 @@ public abstract class MixinServerLevel implements IShipObjectWorldServerProvider
             final Entry<ChunkPos, List<Vector3ic>> knownChunkPosEntry = knownChunkPosIterator.next();
             final long chunkPos = knownChunkPosEntry.getKey().toLong();
             // Unload chunks if they don't have tickets or if they're not in the visible chunks
-            if ((!distanceManagerAccessor.getTickets().containsKey(chunkPos) || chunkMapAccessor.callGetVisibleChunkIfPresent(chunkPos) == null)) {
+            if ((distanceManagerAccessor.getTicketStorage().getTickets(chunkPos).isEmpty() || chunkMapAccessor.callGetVisibleChunkIfPresent(chunkPos) == null)) {
                 final long ticksWaitingToUnload = vs$chunksToUnload.getOrDefault(chunkPos, 0L);
                 if (ticksWaitingToUnload > VS$CHUNK_UNLOAD_THRESHOLD) {
                     // Unload this chunk

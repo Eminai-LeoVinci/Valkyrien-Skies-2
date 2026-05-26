@@ -1,13 +1,15 @@
 package org.valkyrienskies.mod.mixin.feature.teleport_reconnected_player_to_ship;
 
 import com.mojang.authlib.GameProfile;
+import java.util.Optional;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
+import net.minecraft.world.level.storage.ValueOutput;
 import org.joml.Vector3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -32,14 +34,15 @@ public abstract class MixinServerPlayer extends Player {
     }
 
     @Inject(method = "readAdditionalSaveData", at = @At("RETURN"))
-    void teleportToShip(final CompoundTag compoundTag, final CallbackInfo ci) {
+    void teleportToShip(final ValueInput compoundTag, final CallbackInfo ci) {
         if (!VSGameConfig.SERVER.getTeleportReconnectedPlayers())
             return;
 
-        if (!compoundTag.contains("LastShipId"))
+        final Optional<Long> lastShipIdOpt = compoundTag.getLong("LastShipId");
+        if (lastShipIdOpt.isEmpty())
             return; // Player did not disconnect off of any ship
 
-        final long lastShipId = compoundTag.getLong("LastShipId").orElse(0L);
+        final long lastShipId = lastShipIdOpt.get();
 
         final Ship ship = VSGameUtilsKt.getShipObjectWorld(serverLevel()).getAllShips().getById(lastShipId);
         // Don't teleport if the ship doesn't exist anymore
@@ -47,9 +50,9 @@ public abstract class MixinServerPlayer extends Player {
             return;
 
         // Translate ship coords to world coords
-        final double x = compoundTag.getDouble("RelativeShipX").orElse(0.0);
-        final double y = compoundTag.getDouble("RelativeShipY").orElse(0.0);
-        final double z = compoundTag.getDouble("RelativeShipZ").orElse(0.0);
+        final double x = compoundTag.getDoubleOr("RelativeShipX", 0.0);
+        final double y = compoundTag.getDoubleOr("RelativeShipY", 0.0);
+        final double z = compoundTag.getDoubleOr("RelativeShipZ", 0.0);
 
         final Vector3d playerShipPosition = new Vector3d(x, y, z);
         final Vector3d playerWorldPosition = ship.getShipToWorld().transformPosition(playerShipPosition);
@@ -58,7 +61,7 @@ public abstract class MixinServerPlayer extends Player {
     }
 
     @Inject(method = "addAdditionalSaveData", at = @At("RETURN"))
-    void rememberLastShip(final CompoundTag compoundTag, final CallbackInfo ci) {
+    void rememberLastShip(final ValueOutput compoundTag, final CallbackInfo ci) {
         final EntityDraggingInformation draggingInformation = ((IEntityDraggingInformationProvider) this).getDraggingInformation();
 
         if (!draggingInformation.isEntityBeingDraggedByAShip())

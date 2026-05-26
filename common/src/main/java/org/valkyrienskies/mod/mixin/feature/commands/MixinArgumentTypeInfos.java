@@ -14,6 +14,14 @@ import org.valkyrienskies.mod.common.command.arguments.RelativeVector3Argument;
 import org.valkyrienskies.mod.common.command.arguments.ShipArgument;
 import org.valkyrienskies.mod.common.command.arguments.ShipArgumentInfo;
 
+// 1.21.11 port: DISABLED -- removed from valkyrienskies-common.mixins.json.
+// This @Inject into ArgumentTypeInfos.bootstrap does not weave on 1.21.11 because
+// ArgumentTypeInfos is class-loaded too early (during BuiltInRegistries static init)
+// for the mod mixin config to apply -- no apply error is logged, the mixin simply
+// has no effect, ShipArgument never lands in BY_CLASS, and the server fails to
+// serialize the command tree on player join ("Invalid player data").
+// VS2's two custom argument types are now registered from
+// ValkyrienSkiesModFabric.onInitialize() via Fabric API's ArgumentTypeRegistry.
 @Mixin(ArgumentTypeInfos.class)
 public class MixinArgumentTypeInfos {
     @Shadow

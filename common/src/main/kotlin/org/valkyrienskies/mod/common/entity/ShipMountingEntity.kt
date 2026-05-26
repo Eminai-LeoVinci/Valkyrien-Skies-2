@@ -74,6 +74,16 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
         return super.getDismountLocationForPassenger(livingEntity)
     }
 
+    // A standing-helm seat sits over an air block (a chair sits over a solid one -- see
+    // ShipHelmBlockEntity.spawnSeat). Place the helm rider exactly at the seat origin
+    // (deck level) so their feet rest flush, instead of at the default passenger height.
+    override fun getPassengerRidingPosition(entity: Entity): Vec3 {
+        if (level().getBlockState(blockPosition()).isAir) {
+            return position()
+        }
+        return super.getPassengerRidingPosition(entity)
+    }
+
     // 1.21.11: these now take ValueInput/ValueOutput instead of CompoundTag. Bodies stay empty —
     // ShipMountingEntity has no persistent state worth saving (it's recreated on ship mount).
     override fun readAdditionalSaveData(input: ValueInput) {}
@@ -95,20 +105,36 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
 
     private fun sendDrivingPacket() {
         if (!level().isClientSide) return
-        // todo: custom keybinds for going up down and all around but for now lets just use the mc defaults
-        val opts = Minecraft.getInstance().options
-        val forward = opts.keyUp.isDown
-        val backward = opts.keyDown.isDown
-        val left = opts.keyLeft.isDown
-        val right = opts.keyRight.isDown
-        val up = opts.keyJump.isDown
+
+        // Read movement intent from the local player's ClientInput rather than the
+        // W/A/S/D KeyMappings directly. Controlify's joystick mode (and other controller
+        // / accessibility mods) writes to ClientInput.moveVector and .keyPresses; it
+        // typically does NOT synthesize KeyMapping.isDown events for stick input, so the
+        // old `opts.keyUp.isDown` path missed controller stick movement entirely.
+        // Keyboard still works unchanged because vanilla KeyboardInput.tick() computes
+        // the same moveVector / keyPresses from the W/A/S/D KeyMappings.
+        // shipDown / shipCruise stay as KeyMappings so they can be bound to controller
+        // buttons via Controlify's normal keybind UI.
+        val mc = Minecraft.getInstance()
+        val playerInput = mc.player?.input
+        val moveVec = playerInput?.moveVector
+        val forwardImpulse = moveVec?.y ?: 0f
+        val leftImpulse = moveVec?.x ?: 0f
+        val jumping = playerInput?.keyPresses?.jump() ?: mc.options.keyJump.isDown
         val sprint = this.controllingPassenger?.isSprinting == true
+        // 2.4.80: "up" intent now also accepts the dedicated shipUp keybind so
+        // controller users can map a controller button to ascend without
+        // overloading vanilla jump. Keyboard players keep SPACE (jump) as before.
+        val up = jumping || VSKeyBindings.shipUp.get().isDown
         val down = VSKeyBindings.shipDown.get().isDown
         val cruise = VSKeyBindings.shipCruise.get().isDown
 
+        // Quantize to -1/0/+1 to preserve the binary thrust step the physics is tuned
+        // for. Small deadzone guards against analog stick noise near center.
+        val deadzone = 0.1f
         val impulse = Vector3f()
-        impulse.z = if (forward == backward) 0.0f else if (forward) 1.0f else -1.0f
-        impulse.x = if (left == right) 0.0f else if (left) 1.0f else -1.0f
+        impulse.z = if (forwardImpulse > deadzone) 1.0f else if (forwardImpulse < -deadzone) -1.0f else 0.0f
+        impulse.x = if (leftImpulse > deadzone) 1.0f else if (leftImpulse < -deadzone) -1.0f else 0.0f
         impulse.y = if (up == down) 0.0f else if (up) 1.0f else -1.0f
 
         with(vsCore.simplePacketNetworking) {

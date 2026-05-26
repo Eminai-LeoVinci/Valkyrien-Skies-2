@@ -24,10 +24,11 @@ import org.valkyrienskies.core.util.x
 import org.valkyrienskies.core.util.y
 import org.valkyrienskies.core.util.z
 import org.valkyrienskies.mod.common.ValkyrienSkiesMod
+import org.valkyrienskies.mod.common.blockProps
 import org.valkyrienskies.mod.common.util.toDoubles
 
 class TestChairBlock() : HorizontalDirectionalBlock(
-    Properties.of().strength(1.0f, 120.0f).sound(SoundType.WOOL)
+    blockProps().strength(1.0f, 120.0f).sound(SoundType.WOOL)
 ) {
     private val SEAT_AABB: VoxelShape = box(0.0, 0.0, 0.0, 16.0, 8.0, 16.0)
 

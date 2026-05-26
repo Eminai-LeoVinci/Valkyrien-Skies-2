@@ -6,7 +6,9 @@ import net.minecraft.commands.synchronization.ArgumentTypeInfo
 import net.minecraft.network.FriendlyByteBuf
 import org.valkyrienskies.mod.common.command.arguments.ShipArgument.Companion
 
-internal class ShipArgumentInfo : ArgumentTypeInfo<ShipArgument, ShipArgumentInfoTemplate> {
+// 1.21.11 port: public (was internal) so VS2's Fabric initializer can register this
+// argument type via Fabric API's ArgumentTypeRegistry. See ValkyrienSkiesModFabric.
+class ShipArgumentInfo : ArgumentTypeInfo<ShipArgument, ShipArgumentInfoTemplate> {
     override fun serializeToNetwork(template: ShipArgumentInfoTemplate, friendlyByteBuf: FriendlyByteBuf) {
         friendlyByteBuf.writeBoolean(template.selectorOnly)
     }
@@ -26,7 +28,7 @@ internal class ShipArgumentInfo : ArgumentTypeInfo<ShipArgument, ShipArgumentInf
     }
 }
 
-internal class ShipArgumentInfoTemplate(private val info: ShipArgumentInfo, internal val selectorOnly: Boolean) :
+class ShipArgumentInfoTemplate(private val info: ShipArgumentInfo, internal val selectorOnly: Boolean) :
     ArgumentTypeInfo.Template<ShipArgument> {
     override fun instantiate(commandBuildContext: CommandBuildContext): ShipArgument {
         return if (selectorOnly) {

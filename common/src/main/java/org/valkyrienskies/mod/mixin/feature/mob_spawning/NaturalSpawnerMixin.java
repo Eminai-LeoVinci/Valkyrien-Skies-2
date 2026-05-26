@@ -1,6 +1,8 @@
 package org.valkyrienskies.mod.mixin.feature.mob_spawning;
 
+import java.util.List;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.level.NaturalSpawner;
 import net.minecraft.world.level.NaturalSpawner.SpawnState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -16,8 +18,7 @@ public class NaturalSpawnerMixin {
 
     @Inject(method = "spawnForChunk", at = @At("HEAD"), cancellable = true)
     private static void determineSpawningOnShips(final ServerLevel level, final LevelChunk chunk,
-        final SpawnState spawnState,
-        final boolean spawnFriendlies, final boolean spawnMonsters, final boolean bl, final CallbackInfo ci) {
+        final SpawnState spawnState, final List<MobCategory> categories, final CallbackInfo ci) {
         if (VSGameUtilsKt.isChunkInShipyard(level, chunk.getPos().x, chunk.getPos().z)) {
             if (!VSGameConfig.SERVER.getAllowMobSpawns()) {
                 ci.cancel();

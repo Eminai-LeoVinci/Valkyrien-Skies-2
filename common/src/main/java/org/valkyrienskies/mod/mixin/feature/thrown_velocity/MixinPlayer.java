@@ -24,10 +24,10 @@ public abstract class MixinPlayer extends LivingEntity {
     }
 
     @Inject(
-        method = "drop(Lnet/minecraft/world/item/ItemStack;ZZ)Lnet/minecraft/world/entity/item/ItemEntity;",
+        method = "drop(Lnet/minecraft/world/item/ItemStack;Z)Lnet/minecraft/world/entity/item/ItemEntity;",
         at = @At("RETURN")
     )
-    private void shipVelocityToThrownItem(ItemStack itemStack, boolean bl, boolean bl2,
+    private void shipVelocityToThrownItem(ItemStack itemStack, boolean bl,
         CallbackInfoReturnable<ItemEntity> cir) {
         ItemEntity result = cir.getReturnValue();
         if(result == null) return;

@@ -3,7 +3,6 @@ package org.valkyrienskies.mod.mixin.client;
 import net.minecraft.client.Camera;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.ClipContext.Block;
 import net.minecraft.world.level.ClipContext.Fluid;
@@ -34,7 +33,7 @@ public abstract class MixinCamera implements IVSCamera {
     @Shadow
     private boolean initialized;
     @Shadow
-    private BlockGetter level;
+    private Level level;
     @Shadow
     private Entity entity;
     @Shadow
@@ -78,7 +77,7 @@ public abstract class MixinCamera implements IVSCamera {
     private ShipTransform valkyrienskies$shipMountedToTransform = null;
 
     @Override
-    public void setupWithShipMounted(final @NotNull BlockGetter level, final @NotNull Entity renderViewEntity,
+    public void setupWithShipMounted(final @NotNull Level level, final @NotNull Entity renderViewEntity,
         final boolean thirdPerson, final boolean thirdPersonReverse, final float partialTicks,
         final @NotNull ClientShip shipMountedTo, final @NotNull Vector3dc inShipPlayerPosition) {
         final ShipTransform renderTransform = shipMountedTo.getRenderTransform();
@@ -103,13 +102,18 @@ public abstract class MixinCamera implements IVSCamera {
 
             final AABBi boundingBox = (AABBi) shipMountedTo.getShipVoxelAABB();
 
-            double dist = ((boundingBox.lengthX() + boundingBox.lengthY() + boundingBox.lengthZ()) / 3.0) * 1.5;
+            // Pullback tuned tight to the player: 1.15x / floor 5. Vanilla 3rd-person is ~4,
+            // so this stays slightly wider but keeps the player & helm clearly in frame.
+            // (floor 5 dominates for small ships; multiplier dominates once avg ship-AABB > ~4 blocks)
+            // 2.4.80: tightened from 1.3x to 1.15x per user request -- they want a closer
+            // shot of the helm in the ship-mounted 3rd person view.
+            double dist = ((boundingBox.lengthX() + boundingBox.lengthY() + boundingBox.lengthZ()) / 3.0) * 1.15;
 
-            dist = dist > 4 ? dist : 4;
+            dist = dist > 5 ? dist : 5;
 
             if (this.level instanceof Level) {
-                this.move((float) -this.valkyrienskies$getMaxZoomIgnoringMountedShip((Level) this.level, 4.0 * (dist / 4.0), shipMountedTo),
-                    0.0f, 0.0f);
+                final double maxZoom = this.valkyrienskies$getMaxZoomIgnoringMountedShip((Level) this.level, 4.0 * (dist / 4.0), shipMountedTo);
+                this.move((float) -maxZoom, 0.0f, 0.0f);
             } else {
                 this.move(-this.getMaxZoom((float) (4.0 * (dist / 4.0))), 0.0f, 0.0f);
             }

@@ -1,5 +1,6 @@
 package org.valkyrienskies.mod.mixin.accessors.server.level;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import java.util.function.BooleanSupplier;
 import net.minecraft.server.level.ChunkHolder;
@@ -21,8 +22,9 @@ public interface ChunkMapAccessor {
     @Invoker("dropChunk")
     void callDropChunk(ServerPlayer serverPlayer, ChunkPos chunkPos);
 
-    @Invoker("getChunks")
-    Iterable<ChunkHolder> callGetChunks();
+    // 1.21.11: ChunkMap.getChunks() was removed; iterate visibleChunkMap.values() directly.
+    @Accessor("visibleChunkMap")
+    Long2ObjectLinkedOpenHashMap<ChunkHolder> getVisibleChunkMap();
 
     @Invoker("getVisibleChunkIfPresent")
     ChunkHolder callGetVisibleChunkIfPresent(long l);

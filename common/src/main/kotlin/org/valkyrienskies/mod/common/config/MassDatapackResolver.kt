@@ -14,6 +14,8 @@ import net.minecraft.util.profiling.ProfilerFiller
 import net.minecraft.world.level.BlockGetter
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.SlabBlock
+import net.minecraft.world.level.block.StairBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.material.Fluid
@@ -34,8 +36,6 @@ import org.valkyrienskies.mod.common.BlockStateInfoProvider
 import org.valkyrienskies.mod.common.ValkyrienSkiesMod
 import org.valkyrienskies.mod.common.hooks.VSGameEvents
 import org.valkyrienskies.mod.common.vsCore
-import org.valkyrienskies.mod.mixin.accessors.world.level.block.SlabBlockAccessor
-import org.valkyrienskies.mod.mixin.accessors.world.level.block.StairBlockAccessor
 import org.valkyrienskies.mod.util.VS_JSON_CODEC
 import org.valkyrienskies.mod.util.logger
 import org.valkyrienskies.mod.util.vsJsonListerFor
@@ -311,10 +311,16 @@ object MassDatapackResolver : BlockStateInfoProvider {
             override fun getFluidState(blockPos: BlockPos): FluidState = Fluids.EMPTY.defaultFluidState()
         }
 
-        // Create a map of common VoxelShape to Lod1SolidCollisionShape
-        val voxelShapeToCollisionShapeMap = generateStairCollisionShapes(
-            StairBlockAccessor.getTopShapes() + StairBlockAccessor.getBottomShapes() + SlabBlockAccessor.getBottomAABB() + SlabBlockAccessor.getTopAABB()
-        )
+        // Create a map of common VoxelShape to Lod1SolidCollisionShape.
+        // 1.21.11: StairBlock/SlabBlock no longer expose static shape-array fields, so the
+        // distinct stair/slab shapes are collected directly from every stair/slab block state.
+        val stairAndSlabShapes: Array<VoxelShape> = BuiltInRegistries.BLOCK
+            .filter { it is StairBlock || it is SlabBlock }
+            .flatMap { it.stateDefinition.possibleStates }
+            .map { it.getShape(dummyBlockGetter, BlockPos.ZERO) }
+            .distinct()
+            .toTypedArray()
+        val voxelShapeToCollisionShapeMap = generateStairCollisionShapes(stairAndSlabShapes)
 
         val generatedCollisionShapesMap = HashMap<VoxelShape, SolidBlockShape?>()
         val liquidMaterialToDensityMap: HashMap<Fluid, Pair<Double, Double>> = hashMapOf(Fluids.WATER to Pair(1000.0, 0.3), Fluids.LAVA to Pair(10000.0, 1.0), Fluids.FLOWING_WATER to Pair(1000.0, 0.3), Fluids.FLOWING_LAVA to Pair(10000.0, 1.0))

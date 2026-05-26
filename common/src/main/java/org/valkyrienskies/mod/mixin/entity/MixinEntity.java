@@ -4,11 +4,13 @@ import static org.valkyrienskies.mod.common.util.VectorConversionsMCKt.toJOML;
 
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.util.Set;
 import net.minecraft.CrashReport;
 import net.minecraft.CrashReportCategory;
 import net.minecraft.ReportedException;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -18,6 +20,7 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -111,6 +114,27 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
                     }
                 }
 
+                // 2.4.85: A "sealed area" is meant to be an enclosed AIR pocket (e.g. submarine
+                // interior) where the player should breathe and ignore exterior fluid. If the
+                // player's ship-space block IS itself a fluid block — i.e. they're literally
+                // standing inside water on the ship (deck pool, hot tub, sub's flooded hold) —
+                // it's not an air pocket, it's a pool. Don't suppress fluid mechanics: the
+                // player should still get buoyancy, swimming state, eye-in-water overlay, and
+                // drowning damage exactly like any world-water block.
+                //
+                // Without this clause, VS2's sealed-pocket detection over-classifies any water
+                // block that the connectivity engine happens to enclose, and the three water
+                // mixins below (updateFluidOnEyes, updateSwimming, updateInWaterStateAndDoWater-
+                // CurrentPushing) all silently no-op, so the player drops through the water
+                // without floating. Reported as a regression after the 1.21.11 port.
+                if (isInSealedArea && relativePosition != Vec3.ZERO) {
+                    final BlockState shipBlockState =
+                        level.getBlockState(BlockPos.containing(relativePosition));
+                    if (!shipBlockState.getFluidState().isEmpty()) {
+                        isInSealedArea = false;
+                    }
+                }
+
                 vs$setInSealedArea(isInSealedArea && ValkyrienSkies.isConnectivityEnabled(level.isClientSide));
             }
         }
@@ -150,15 +174,90 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
         }
     }
 
-    @WrapMethod(method = "isInBubbleColumn")
-    private boolean onIsInBubbleColumn(Operation<Boolean> original) {
-        if (vs$isInSealedArea && ValkyrienSkies.isConnectivityEnabled(level.isClientSide)) return false;
-        return original.call();
+    /**
+     * 2.4.86: Direct ship-water detection at the player's bounding box, applied AFTER vanilla's
+     * own check. If vanilla's {@code updateFluidHeightAndDoFluidPushing} did not detect water
+     * (which happens when the only water near the player lives in a ship's ship-space block grid
+     * rather than at the player's world position), this manually scans nearby ships and forces
+     * {@code wasTouchingWater = true} and a synthetic {@code fluidHeight} entry so the player
+     * gets the normal water-touch effects: slowdown, drag, swim-up on jump, eye-in-water tint,
+     * fall-damage reset, and so on.
+     *
+     * <p>This duplicates work the fabric-side {@code feature.water_in_ships_entity.MixinEntity}
+     * was supposed to be doing via its {@code @Redirect}/{@code @ModifyVariable}/{@code @Inject}
+     * chain around {@code updateFluidHeightAndDoFluidPushing}. That chain still has its eye-in-
+     * water {@code @WrapOperation} working correctly in 1.21.11 (verified by the user seeing
+     * breathing bubbles on ship water), but the body-water detection chain — which is structurally
+     * more fragile because it depends on resolving multiple {@code @Local} ordinals and on the
+     * specific layout of the vanilla method's local variable table — apparently silently no-ops.
+     * Rather than debug the brittle multi-injector chain in-place, this provides a robust
+     * fallback that has only one dependency: that vanilla left {@code wasTouchingWater = false}.
+     *
+     * <p>Skipped when vanilla already set {@code wasTouchingWater = true}, when level isn't set
+     * yet (firstTick), or when the upstream sealed-area HEAD inject cancelled
+     * {@code updateInWaterStateAndDoWaterCurrentPushing} (in which case TAIL is not reached, so
+     * this injection doesn't fire at all — sealed-area suppression remains intact for submarines).
+     */
+    @Inject(
+        method = "updateInWaterStateAndDoWaterCurrentPushing",
+        at = @At("TAIL")
+    )
+    private void valkyrienskies$detectShipWaterDirectly(final CallbackInfo ci) {
+        if (this.wasTouchingWater) {
+            return;
+        }
+        if (this.level == null) {
+            return;
+        }
+
+        final AABB worldAabb = this.getBoundingBox().deflate(0.001);
+        final double[] maxHeightAboveMinY = {0.0};
+        final boolean[] found = {false};
+
+        VSGameUtilsKt.transformFromWorldToNearbyShips(this.level, worldAabb, shipAabb -> {
+            final int xMin = Mth.floor(shipAabb.minX);
+            final int xMax = Mth.ceil(shipAabb.maxX);
+            final int yMin = Mth.floor(shipAabb.minY);
+            final int yMax = Mth.ceil(shipAabb.maxY);
+            final int zMin = Mth.floor(shipAabb.minZ);
+            final int zMax = Mth.ceil(shipAabb.maxZ);
+            final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+            for (int x = xMin; x < xMax; x++) {
+                for (int y = yMin; y < yMax; y++) {
+                    for (int z = zMin; z < zMax; z++) {
+                        pos.set(x, y, z);
+                        final FluidState fs = this.level.getFluidState(pos);
+                        if (fs.is(FluidTags.WATER)) {
+                            final double topY = y + fs.getHeight(this.level, pos);
+                            if (topY >= shipAabb.minY) {
+                                found[0] = true;
+                                final double heightAboveMinY = topY - shipAabb.minY;
+                                if (heightAboveMinY > maxHeightAboveMinY[0]) {
+                                    maxHeightAboveMinY[0] = heightAboveMinY;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (found[0]) {
+            this.wasTouchingWater = true;
+            // fluidHeight drives jumpInLiquid (swim-up on jump) and floatInWaterWhileRidden:
+            // both require height > jump threshold (0.4 default). Mirror the height vanilla
+            // would have stored if the water lived at the player's world AABB.
+            this.fluidHeight.put(FluidTags.WATER, maxHeightAboveMinY[0]);
+        }
     }
+
+    // 1.21.11 port: @WrapMethod for Entity.isInBubbleColumn removed -- that method no longer
+    // exists in 1.21.11 Entity, and the missing target made this whole mixin fail to apply
+    // (which silently dropped IEntityDraggingInformationProvider from every entity).
 
     @Inject(
         at = @At("TAIL"),
-        method = "checkInsideBlocks"
+        method = "checkInsideBlocks(Ljava/util/List;Lnet/minecraft/world/entity/InsideBlockEffectApplier$StepBasedCollector;)V"
     )
     private void afterCheckInside(final CallbackInfo ci) {
         final AABBd boundingBox = toJOML(getBoundingBox());
@@ -389,8 +488,7 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     @Shadow
     public abstract boolean shouldRenderAtSqrDistance(double d);
 
-    @Shadow
-    public boolean hasImpulse;
+    // 1.21.11 port: @Shadow of Entity.hasImpulse removed -- field gone in 1.21.11 (was unused here).
 
     @Shadow
     public abstract void push(double d, double e, double f);
@@ -409,7 +507,13 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     private Set<TagKey<Fluid>> fluidOnEyes;
 
     @Shadow
+    protected Object2DoubleMap<TagKey<Fluid>> fluidHeight;
+
+    @Shadow
     public abstract void setSwimming(boolean bl);
+
+    @Shadow
+    protected abstract boolean getSharedFlag(int flag);
 
     @Override
     @NotNull
@@ -420,6 +524,12 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     @Override
     public boolean vs$shouldDrag() {
         return true;
+    }
+
+    @Override
+    public boolean vs$isGliding() {
+        // Shared flag 7 = fall flying / elytra gliding.
+        return getSharedFlag(7);
     }
 
     @Override
@@ -438,4 +548,7 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
         draggingInformation.setLastShipStoodOn(ship.getId());
         draggingInformation.setShouldImpulseMovement(false);
     }
+
+    @Shadow
+    public abstract Vec3 getDeltaMovement();
 }

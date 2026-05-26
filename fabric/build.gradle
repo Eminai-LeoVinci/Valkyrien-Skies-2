@@ -47,7 +47,10 @@ dependencies {
     include(modImplementation "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:${rootProject.fcap_version}")
 
     modCompileOnly("maven.modrinth:create-utilities:${create_utilities_version}")
-    modCompileOnly("maven.modrinth:sodium:${sodium_version}")
+    // Sodium 0.8.11 ships built with Fabric Loom 1.16.1; VS2's Architectury Loom 1.14.473
+    // rejects deps built with a newer Loom. Use a local copy with Fabric-Loom-Version patched
+    // down (libs/) so Loom will consume it — we only need Sodium's API to compile against.
+    modCompileOnly(files("$rootDir/libs/sodium-fabric-0.8.11-loompatched.jar"))
     // Disable indium until we update sodium to newer versions
     //modRuntimeOnly("maven.modrinth:indium:${indium_version}")
     modImplementation("maven.modrinth:modmenu:${modmenu_version}")
@@ -156,6 +159,11 @@ shadowJar {
     dependencies {
         exclude(dependency("org.jetbrains.kotlin:.*:.*")) // Don't shade kotlin!
         exclude(dependency("org.apache.commons:commons-lang3:.*")) // Don't apache-commons, see #617
+        // Minecraft already provides JOML. Shading vs-core's older transitive copy (joml 1.10.4)
+        // shadows MC's newer one on the classpath and breaks Iris terrain rendering:
+        // NoSuchMethodError Vector3f.set(Vector4fc) -> exploded/rainbow geometry and crashes.
+        // joml-primitives stays bundled: different package (org.joml.primitives), no collision.
+        exclude(dependency("org.joml:joml:.*"))
     }
     // Exclude dummy Optifine classes
     exclude "net/optifine/**"

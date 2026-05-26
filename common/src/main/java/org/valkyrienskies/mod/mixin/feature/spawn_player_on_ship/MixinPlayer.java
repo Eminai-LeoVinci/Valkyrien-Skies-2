@@ -3,7 +3,6 @@ package org.valkyrienskies.mod.mixin.feature.spawn_player_on_ship;
 import com.mojang.authlib.GameProfile;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -29,8 +28,16 @@ public abstract class MixinPlayer extends LivingEntity implements PlayerKnownShi
         super(entityType, level);
     }
 
-    @Inject(method = "<init>", at = @At("TAIL"))
-    private void populateLoadedShips(Level level, BlockPos blockPos, float f, GameProfile gameProfile, CallbackInfo ci) {
+    // 1.21.11: Player ctor is (Level, GameProfile). Older VS2 was on 1.20.x where the
+    // ctor took (Level, BlockPos, float, GameProfile); the stale 4-arg inject silently
+    // failed to bind, so this whole class was dropped from valkyrienskies-common.mixins.json
+    // by whoever ported. With it absent, Player never gained the PlayerKnownShipsDuck
+    // interface, and the sibling MixinServerPlayer.copyFrom inject on ServerPlayer.restoreFrom
+    // would ClassCastException every time PlayerList.respawn fired -- bricking *all* respawns
+    // (ground bed, no bed, ship bed alike). require = 1 here so the next Mojang refactor
+    // fails the build instead of silently no-opping.
+    @Inject(method = "<init>", at = @At("TAIL"), require = 1)
+    private void populateLoadedShips(Level level, GameProfile gameProfile, CallbackInfo ci) {
         if (level != null && level.isClientSide()) { // Serverside we repopulate it from the previous ServerPlayer in ServerPlayer::restoreFrom.
             VSGameUtilsKt.getShipObjectWorld(level).getLoadedShips().forEach(ship -> vs_knownShips.add(ship.getId()));
         }

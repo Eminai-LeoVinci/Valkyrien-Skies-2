@@ -19,6 +19,12 @@ public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
 
     private static final boolean PATH_FINDING_DEBUG =
         "false".equals(System.getProperty("org.valkyrienskies.render_pathfinding"));
+
+    // Diagnostic: -Dvs.disableMixins=substr1,substr2 skips any mixin whose fully-qualified
+    // name contains one of the substrings. Used to bisect render-corruption bugs.
+    private static final String VS_DISABLE_MIXINS =
+        System.getProperty("vs.disableMixins", "").trim();
+
     private static VSRenderer vsRenderer = null;
 
     public static VSRenderer getVSRenderer() {
@@ -61,6 +67,17 @@ public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(final String s, final String mixinClassName) {
+        if (!VS_DISABLE_MIXINS.isEmpty()) {
+            for (final String token : VS_DISABLE_MIXINS.split(",")) {
+                final String trimmed = token.trim();
+                if (!trimmed.isEmpty() && mixinClassName.contains(trimmed)) {
+                    MixinService.getService().getLogger("mixin")
+                        .warn("[VS2-DIAG] vs.disableMixins -> skipping " + mixinClassName);
+                    return false;
+                }
+            }
+        }
+
         final VSRenderer renderer = getVSRenderer();
 
         if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.immersive_portals")) {
@@ -68,7 +85,7 @@ public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if (
             mixinClassName.equals("org.valkyrienskies.mod.mixin.client.world.MixinClientChunkCache") ||
-                mixinClassName.equals("org.valkyrienskies.mod.mixin.mod_compat.vanilla_renderer.MixinViewAreaVanilla")
+                mixinClassName.equals("org.valkyrienskies.mod.mixin.client.renderer.MixinViewAreaVanilla")
         ) {
             return !LoadedMods.getImmersivePortals(); // Only load this if immersive portals is NOT present
         }

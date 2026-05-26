@@ -5,7 +5,6 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import java.util.Set;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Entity.RemovalReason;
@@ -13,6 +12,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.phys.AABB;
 import org.joml.Vector3d;
 import org.joml.primitives.AABBic;
@@ -46,7 +46,7 @@ public abstract class MixinEntity {
     public abstract void teleportTo(double d, double e, double f);
 
     @Shadow
-    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h);
+    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h, boolean bl);
 
     @Shadow
     public abstract EntityType<?> getType();
@@ -112,10 +112,10 @@ public abstract class MixinEntity {
 
     @Inject(
         at = @At("HEAD"),
-        method = "teleportTo(Lnet/minecraft/server/level/ServerLevel;DDDLjava/util/Set;FF)Z",
+        method = "teleportTo(Lnet/minecraft/server/level/ServerLevel;DDDLjava/util/Set;FFZ)Z",
         cancellable = true
     )
-    private void beforeTeleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h, final CallbackInfoReturnable<Boolean> ci) {
+    private void beforeTeleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h, boolean bl, final CallbackInfoReturnable<Boolean> ci) {
         if (isModifyingTeleport) {
             return;
         }
@@ -124,7 +124,7 @@ public abstract class MixinEntity {
         isModifyingTeleport = true;
         final Vector3d pos = VSEntityManager.INSTANCE.getHandler(Entity.class.cast(this))
             .getTeleportPos(Entity.class.cast(this), new Vector3d(d, e, f));
-        teleportTo(serverLevel, pos.x, pos.y, pos.z, set, g, h);
+        teleportTo(serverLevel, pos.x, pos.y, pos.z, set, g, h, bl);
         isModifyingTeleport = false;
     }
 
@@ -194,7 +194,9 @@ public abstract class MixinEntity {
                 shipAABBi.maxX(), shipAABBi.maxY(), shipAABBi.maxZ()
             ).inflate(-0.25, 1.5, -0.25);
 
-            if (!shipAABB.intersects(eBB) && e.flyDist > 0.05) {
+            final boolean intersects = shipAABB.intersects(eBB);
+            final boolean willTransfer = !intersects && e.flyDist > 0.05;
+            if (willTransfer) {
                 WorldEntityHandler.INSTANCE.moveEntityFromShipyardToWorld(Entity.class.cast(this), ship);
             }
         }
@@ -213,9 +215,9 @@ public abstract class MixinEntity {
     @WrapMethod(
         method = "load"
     )
-    private void loadShipyard(CompoundTag compoundTag, Operation<Void> original){
+    private void loadShipyard(ValueInput valueInput, Operation<Void> original){
         isModifyingSetPos = true;
-        original.call(compoundTag);
+        original.call(valueInput);
         isModifyingSetPos = false;
     }
 }

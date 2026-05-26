@@ -41,6 +41,7 @@ import org.valkyrienskies.core.internal.ships.VsiShip
 import org.valkyrienskies.mod.api.vsApi
 import org.valkyrienskies.mod.common.ValkyrienSkiesMod
 import org.valkyrienskies.mod.common.assembly.ICopyableBlock
+import org.valkyrienskies.mod.common.blockProps
 import org.valkyrienskies.mod.common.blockentity.TestHingeBlockEntity
 import org.valkyrienskies.mod.common.dimensionId
 import org.valkyrienskies.mod.common.getShipManagingPos
@@ -52,7 +53,7 @@ import kotlin.math.roundToInt
 
 object TestHingeBlock :
     DirectionalBlock(
-        Properties.of().strength(10.0f, 1200.0f).sound(SoundType.METAL)
+        blockProps().strength(10.0f, 1200.0f).sound(SoundType.METAL)
     ), EntityBlock, ICopyableBlock {
 
     private val EAST_AABB = box(0.0, 0.0, 0.0, 8.0, 16.0, 16.0)

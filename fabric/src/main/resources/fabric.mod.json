@@ -28,7 +28,7 @@
   "accessWidener": "valkyrienskies-common.accesswidener",
   "depends": {
     "fabricloader": ">=0.14.9",
-    "minecraft": "1.21.1",
+    "minecraft": "1.21.11",
     "fabric-api": "*"
   },
   "breaks": {

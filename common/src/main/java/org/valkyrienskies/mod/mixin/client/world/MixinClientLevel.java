@@ -6,7 +6,6 @@ import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -92,8 +91,8 @@ public abstract class MixinClientLevel implements IShipObjectWorldClientProvider
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void postInit(ClientPacketListener clientPacketListener, ClientLevelData clientLevelData,
-        ResourceKey resourceKey, Holder holder, int i, int j, Supplier supplier, LevelRenderer levelRenderer,
-        boolean bl, long l, CallbackInfo ci) {
+        ResourceKey resourceKey, Holder holder, int i, int j, LevelRenderer levelRenderer,
+        boolean bl, long l, int k, CallbackInfo ci) {
         if (getShipObjectWorld() != null) {
             DimensionParametersResolver.Parameters params = DimensionParametersResolver.INSTANCE.getDimensionMap().get(
                 VSGameUtilsKt.getDimensionId((ClientLevel) (Object) this)

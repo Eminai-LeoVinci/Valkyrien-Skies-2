@@ -1,12 +1,15 @@
 package org.valkyrienskies.mod.fabric.mixin.compat.sodium;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.mojang.blaze3d.textures.GpuSampler;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
+import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior;
 import net.caffeinemc.mods.sodium.client.render.viewport.CameraTransform;
+import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import org.joml.Matrix4f;
 import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Final;
@@ -25,10 +28,18 @@ public class MixinRenderSectionManager {
     @Final
     private ChunkRenderer chunkRenderer;
 
+    @Shadow
+    @Final
+    private SortBehavior sortBehavior;
+
     @Inject(at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/gl/device/CommandList;flush()V"),
         method = "renderLayer")
     private void redirectRenderLayer(final ChunkRenderMatrices matrices, final TerrainRenderPass pass,
-        final double camX, final double camY, final double camZ, final CallbackInfo ci, @Local final CommandList commandList) {
+        final double camX, final double camY, final double camZ, final FogParameters fogParameters,
+        final GpuSampler gpuSampler, final CallbackInfo ci, @Local final CommandList commandList) {
+
+        // Sodium's renderLayer passes (sortBehavior != OFF) as render()'s translucency-sort flag — mirror it.
+        final boolean sortTranslucent = sortBehavior != SortBehavior.OFF;
 
         ((RenderSectionManagerDuck) this).vs_getShipRenderLists().forEach((ship, renderList) -> {
             final Matrix4f newModelView = new Matrix4f(matrices.modelView());
@@ -38,9 +49,8 @@ public class MixinRenderSectionManager {
 
             final ChunkRenderMatrices newMatrices = new ChunkRenderMatrices(matrices.projection(), newModelView);
             chunkRenderer.render(newMatrices, commandList, renderList, pass,
-                new CameraTransform(center.x(), center.y(), center.z()));
+                new CameraTransform(center.x(), center.y(), center.z()), fogParameters, sortTranslucent, gpuSampler);
             commandList.close();
         });
     }
-
 }

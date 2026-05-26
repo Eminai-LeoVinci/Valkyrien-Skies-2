@@ -4,7 +4,6 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import java.util.Collections;
-import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.Connection;
 import net.minecraft.network.DisconnectionDetails;
@@ -17,11 +16,14 @@ import net.minecraft.server.level.ServerPlayerGameMode;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.world.entity.Relative;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
+import org.joml.primitives.AABBd;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -78,6 +80,38 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
         return VSGameUtilsKt.toWorldCoordinates(player.level(), subtract.call(instance, vec3));
     }
 
+    /**
+     * A shipyard entity (item frame, painting, minecart, ...) physically lives in its ship's
+     * shipyard millions of blocks from where the ship visually appears. handleInteract gates
+     * every attack/use-on-entity packet behind ServerboundInteractPacket.isWithinRange, which
+     * reach-checks the player against entity.getBoundingBox() -- the raw shipyard-space box,
+     * always hopelessly out of range, so the interaction is silently dropped and the entity
+     * can't be broken or have an item placed in it.
+     *
+     * <p>Transform that box into world space, where the entity visually sits on the ship right
+     * next to the player, so the vanilla reach check passes. Non-shipyard entities resolve no
+     * ship and keep their box unchanged. Mirrors VS2's Forge-only isCloseEnough overwrite.
+     */
+    @WrapOperation(
+        method = "handleInteract",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/Entity;getBoundingBox()Lnet/minecraft/world/phys/AABB;"
+        ),
+        require = 1
+    )
+    private AABB valkyrienskies$worldSpaceInteractBox(final Entity entity, final Operation<AABB> original) {
+        final AABB box = original.call(entity);
+        final ServerShip ship =
+            VSGameUtilsKt.getShipManagingPos((ServerLevel) player.level(), entity.blockPosition());
+        if (ship == null) {
+            return box;
+        }
+        final AABBd worldBox = VectorConversionsMCKt.toJOML(box);
+        worldBox.transform(ship.getShipToWorld());
+        return VectorConversionsMCKt.toMinecraft(worldBox);
+    }
+
     /*
     @WrapOperation(
         at = @At(
@@ -131,16 +165,65 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
         return !VSGameConfig.SERVER.getEnableMovementChecks();
     }
 
+    // 1.21.11: the "moved wrongly" rubber-band gate now calls `ServerPlayer.isCreative()`
+    // directly inside handleMovePlayer (older VS2 wrap above targets ServerPlayerGameMode
+    // which is the old call path — present here for back-compat, silently no-ops on 1.21.11
+    // because the call site moved). Without this, a *survival* player standing on a moving
+    // ship gets rubber-banded every tick: server position is dragged forward by
+    // EntityDragger but the player's client→server move packet trips the bl4
+    // ("moved wrongly!") delta check, the server teleports them back, drag pushes them
+    // forward, repeat → visible jitter. Creative bypasses it naturally (isCreative=true);
+    // mounted bypasses via handleMoveVehicle's own gate.
+    @WrapOperation(
+        method = "handleMovePlayer",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/server/level/ServerPlayer;isCreative()Z"
+        ),
+        require = 1
+    )
+    private boolean valkyrienskies$skipMovedWronglyCheck(final ServerPlayer instance,
+        final Operation<Boolean> original) {
+        if (VSGameConfig.SERVER.getEnableMovementChecks()) {
+            return original.call(instance);
+        }
+        return true;
+    }
+
+    // 1.21.11: the "moved too quickly" rubber-band is now gated by the new
+    // shouldCheckPlayerMovement(boolean) helper (which itself consults isSingleplayerOwner,
+    // dimension-change state, and the PLAYER_MOVEMENT_CHECK gamerule). The legacy
+    // shouldSkipMoveCheck1 above targets a direct isSingleplayerOwner() call from
+    // handleMovePlayer that no longer exists — silent no-op. Skipping the whole helper
+    // is equivalent to "don't run the speed check" — the same outcome
+    // enableMovementChecks=false has always intended.
+    @WrapOperation(
+        method = "handleMovePlayer",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;shouldCheckPlayerMovement(Z)Z"
+        ),
+        require = 1
+    )
+    private boolean valkyrienskies$skipMovedTooQuicklyCheck(
+        final ServerGamePacketListenerImpl instance, final boolean isFallFlying,
+        final Operation<Boolean> original) {
+        if (VSGameConfig.SERVER.getEnableMovementChecks()) {
+            return original.call(instance, isFallFlying);
+        }
+        return false;
+    }
+
     // Fixes:
     // https://github.com/ValkyrienSkies/Valkyrien-Skies-2/issues/87
     // Bed Bug
     @Inject(
-        method = "teleport(DDDFFLjava/util/Set;)V",
+        method = "teleport(DDDFF)V",
         at = @At(value = "HEAD"),
         cancellable = true
     )
     private void transformTeleport(final double x, final double y, final double z, final float yaw, final float pitch,
-        final Set<Relative> relativeSet, final CallbackInfo ci) {
+        final CallbackInfo ci) {
 
         if (!VSGameConfig.SERVER.getTransformTeleports()) {
             return;

@@ -48,3 +48,6 @@ forge*changelog.txt
 /.architectury-transformer/debug.log
 /.claude/settings.local.json
 .claude/
+
+# Loom-patched 3rd-party jars (e.g. sodium) we vendor for compileOnly
+libs/

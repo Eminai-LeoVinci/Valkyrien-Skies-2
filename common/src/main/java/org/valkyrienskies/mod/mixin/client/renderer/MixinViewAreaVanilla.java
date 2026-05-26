@@ -1,4 +1,4 @@
-package org.valkyrienskies.mod.mixin.mod_compat.vanilla_renderer;
+package org.valkyrienskies.mod.mixin.client.renderer;
 
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap.Entry;
@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.ViewArea;
 import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -59,7 +60,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     private void preScheduleRebuild(final int x, final int y, final int z, final boolean important,
         final CallbackInfo callbackInfo) {
 
-        final int yIndex = y - level.getMinSection();
+        final int yIndex = y - level.getMinSectionY();
 
         if (yIndex < 0 || yIndex >= sectionGridSizeY) {
             return; // Weird, but just ignore it
@@ -83,7 +84,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     private void preGetRenderedChunk(final BlockPos pos,
         final CallbackInfoReturnable<SectionRenderDispatcher.RenderSection> callbackInfoReturnable) {
         final int chunkX = Mth.floorDiv(pos.getX(), 16);
-        final int chunkY = Mth.floorDiv(pos.getY() - level.getMinBuildHeight(), 16);
+        final int chunkY = Mth.floorDiv(pos.getY() - level.getMinY(), 16);
         final int chunkZ = Mth.floorDiv(pos.getZ(), 16);
 
         if (chunkY < 0 || chunkY >= sectionGridSizeY) {
@@ -104,7 +105,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
 
     @Override
     public SectionRenderDispatcher.RenderSection vs$getShipRenderSection(final int chunkX, final int sectionY, final int chunkZ) {
-        final int yIndex = sectionY - level.getMinSection();
+        final int yIndex = sectionY - level.getMinSectionY();
         if (yIndex < 0 || yIndex >= sectionGridSizeY) {
             return null;
         }
@@ -116,7 +117,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     public SectionRenderDispatcher.RenderSection vs$getOrCreateShipRenderSection(
         final int chunkX, final int sectionY, final int chunkZ
     ) {
-        final int yIndex = sectionY - level.getMinSection();
+        final int yIndex = sectionY - level.getMinSectionY();
         if (yIndex < 0 || yIndex >= sectionGridSizeY) {
             return null;
         }
@@ -124,7 +125,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
         final SectionRenderDispatcher.RenderSection[] arr =
             vs$shipRenderChunks.computeIfAbsent(key, k -> new SectionRenderDispatcher.RenderSection[sectionGridSizeY]);
         if (arr[yIndex] == null) {
-            arr[yIndex] = vs$sectionRenderDispatcher.new RenderSection(0, chunkX << 4, sectionY << 4, chunkZ << 4);
+            arr[yIndex] = vs$sectionRenderDispatcher.new RenderSection(0, SectionPos.asLong(chunkX, sectionY, chunkZ));
         }
         arr[yIndex].setDirty(true);
         return arr[yIndex];
@@ -138,7 +139,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
             if (chunks != null) {
                 for (final SectionRenderDispatcher.RenderSection chunk : chunks) {
                     if (chunk != null) {
-                        chunk.releaseBuffers();
+                        chunk.reset();
                     }
                 }
             }
@@ -153,7 +154,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
         for (final Entry<SectionRenderDispatcher.RenderSection[]> entry : vs$shipRenderChunks.long2ObjectEntrySet()) {
             for (final SectionRenderDispatcher.RenderSection renderChunk : entry.getValue()) {
                 if (renderChunk != null) {
-                    renderChunk.releaseBuffers();
+                    renderChunk.reset();
                 }
             }
         }

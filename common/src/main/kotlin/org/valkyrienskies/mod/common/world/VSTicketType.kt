@@ -22,4 +22,16 @@ object VSTicketType {
     val SHIP_CHUNK: TicketType = TicketType.register(
         "vs_ship_chunk", TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING or TicketType.FLAG_SIMULATION
     )
+
+    /**
+     * Forces this object's class-init so [SHIP_CHUNK] is registered.
+     *
+     * 1.21.11: TicketType.register writes to BuiltInRegistries.TICKET_TYPE, which freezes
+     * after mod init. This object must be initialized inside the mod-init window, not lazily
+     * the first time a ship chunk is ticketed (which happens mid-tick, long after the freeze,
+     * and crashes with "Registry is already frozen"). Call this from the mod initializer.
+     */
+    @JvmStatic
+    fun init() {
+    }
 }

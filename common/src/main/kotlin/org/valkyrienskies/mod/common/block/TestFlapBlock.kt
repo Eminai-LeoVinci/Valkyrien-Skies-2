@@ -19,11 +19,12 @@ import net.minecraft.world.level.block.state.StateDefinition
 import net.minecraft.world.phys.shapes.CollisionContext
 import net.minecraft.world.phys.shapes.VoxelShape
 import org.valkyrienskies.core.api.ships.Wing
+import org.valkyrienskies.mod.common.blockProps
 import org.valkyrienskies.mod.common.util.toJOMLD
 
 class TestFlapBlock() :
     DirectionalBlock(
-        Properties.of().strength(10.0f, 1200.0f).sound(SoundType.METAL)
+        blockProps().strength(10.0f, 1200.0f).sound(SoundType.METAL)
     ), WingBlock {
 
     private val EAST_AABB = box(4.0, 0.0, 0.0, 12.0, 16.0, 16.0)

@@ -2,7 +2,6 @@ package org.valkyrienskies.mod.mixin.feature.tick_ship_chunks;
 
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.ChunkPos;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,18 +22,9 @@ public abstract class MixinChunkMap {
     @Final
     ServerLevel level;
 
-    @Inject(method = "euclideanDistanceSquared", at = @At("HEAD"), cancellable = true)
-    private static void preDistanceToSqr(final ChunkPos chunkPos, final Entity entity,
-        final CallbackInfoReturnable<Double> cir) {
-        final double d = chunkPos.x * 16 + 8;
-        final double e = chunkPos.z * 16 + 8;
-        final double retValue =
-            VSGameUtilsKt.squaredDistanceBetweenInclShips(entity.level(), entity.getX(), 0, entity.getZ(), d,
-                0,
-                e);
-
-        cir.setReturnValue(retValue);
-    }
+    // 1.21.11: ChunkMap.euclideanDistanceSquared now takes (ChunkPos, Vec3) instead of
+    // (ChunkPos, Entity), and is static — so the ship-aware override can't reach the level.
+    // Dropped; noPlayersCloseForSpawning below still covers ship-chunk spawning.
 
     @Inject(method = "anyPlayerCloseEnoughForSpawning", at = @At("RETURN"), cancellable = true)
     void noPlayersCloseForSpawning(final ChunkPos chunkPos, final CallbackInfoReturnable<Boolean> cir) {

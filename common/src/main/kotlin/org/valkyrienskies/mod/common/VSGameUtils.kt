@@ -119,7 +119,10 @@ fun MinecraftServer.executeIf(condition: () -> Boolean, toExecute: Runnable) {
     }
 }
 
-val Level.yRange get() = LevelYRange(minY, maxY - 1)
+// 1.21.11: Level.maxY is the inclusive top block Y (e.g. 319); the old maxBuildHeight
+// was exclusive, so the historical "- 1" is now an off-by-one. LevelYRange requires
+// maxY congruent to 15 mod 16, which the inclusive value already satisfies.
+val Level.yRange get() = LevelYRange(minY, maxY)
 
 fun Level.isTickingChunk(pos: ChunkPos) = isTickingChunk(pos.x, pos.z)
 fun Level.isTickingChunk(chunkX: Int, chunkZ: Int) =
@@ -150,7 +153,7 @@ fun MinecraftServer.getLevelFromDimensionId(dimensionId: DimensionId): ServerLev
 }
 
 val Minecraft.shipObjectWorld
-    get() = (this as IShipObjectWorldClientProvider).shipObjectWorld ?: vsCore.dummyShipWorldClient
+    get() = (this as? IShipObjectWorldClientProvider)?.shipObjectWorld ?: vsCore.dummyShipWorldClient
 val ClientLevel?.shipObjectWorld get() = Minecraft.getInstance().shipObjectWorld
 
 val VsiPlayer.mcPlayer: Player get() = (this as MinecraftPlayer).playerEntityReference.get()!!

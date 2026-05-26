@@ -1,27 +1,22 @@
 package org.valkyrienskies.mod.mixin.client.renderer;
 
 import com.llamalad7.mixinextras.injector.ModifyReturnValue;
-import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
-import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.Camera;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
-import org.joml.Quaternionf;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.primitives.AABBdc;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -34,8 +29,6 @@ import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import org.valkyrienskies.mod.common.util.EntityDragger;
 import org.valkyrienskies.mod.common.util.EntityDraggingInformation;
 import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
-import org.valkyrienskies.mod.common.world.RaycastUtilsKt;
-import org.valkyrienskies.mod.mixinducks.client.MinecraftDuck;
 
 @Mixin(GameRenderer.class)
 public abstract class MixinGameRenderer {
@@ -47,61 +40,6 @@ public abstract class MixinGameRenderer {
     @Shadow
     @Final
     private Camera mainCamera;
-
-    @Shadow
-    protected abstract double getFov(Camera camera, float f, boolean bl);
-
-    @Shadow
-    public abstract Matrix4f getProjectionMatrix(double d);
-
-    /**
-     * {@link Entity#pick(double, float, boolean)} except the hit pos is not transformed
-     */
-    @Unique
-    private static HitResult entityRaycastNoTransform(
-        final Entity entity, final double maxDistance, final float tickDelta, final boolean includeFluids) {
-        final Vec3 vec3d = entity.getEyePosition(tickDelta);
-        final Vec3 vec3d2 = entity.getViewVector(tickDelta);
-        final Vec3 vec3d3 = vec3d.add(vec3d2.x * maxDistance, vec3d2.y * maxDistance, vec3d2.z * maxDistance);
-        return RaycastUtilsKt.clipIncludeShips(
-            entity.level(),
-            new ClipContext(
-                vec3d,
-                vec3d3,
-                ClipContext.Block.OUTLINE,
-                includeFluids ? ClipContext.Fluid.ANY : ClipContext.Fluid.NONE,
-                entity
-            ),
-            false
-        );
-    }
-
-    @WrapOperation(
-        method = "pick(Lnet/minecraft/world/entity/Entity;DDF)Lnet/minecraft/world/phys/HitResult;",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/Entity;pick(DFZ)Lnet/minecraft/world/phys/HitResult;"
-        )
-    )
-    public HitResult modifyCrosshairTargetBlocks(final Entity receiver, final double maxDistance, final float tickDelta,
-        final boolean includeFluids, final Operation<HitResult> pick) {
-
-        final HitResult original = entityRaycastNoTransform(receiver, maxDistance, tickDelta, includeFluids);
-        ((MinecraftDuck) this.minecraft).vs$setOriginalCrosshairTarget(original);
-
-        return pick.call(receiver, maxDistance, tickDelta, includeFluids);
-    }
-
-    @WrapOperation(
-        method = "pick(Lnet/minecraft/world/entity/Entity;DDF)Lnet/minecraft/world/phys/HitResult;",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/world/phys/Vec3;distanceToSqr(Lnet/minecraft/world/phys/Vec3;)D"
-        )
-    )
-    public double correctDistanceChecks(final Vec3 instance, final Vec3 vec3, final Operation<Double> original) {
-        return VSGameUtilsKt.squaredDistanceBetweenInclShips(this.minecraft.level, instance, vec3, original);
-    }
 
     @Inject(method = "render", at = @At("HEAD"))
     private void preRender(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
@@ -219,74 +157,119 @@ public abstract class MixinGameRenderer {
         }
     }
 
-    /**
-     * Mount the player's camera to the ship they are mounted on.
-     */
-    @WrapOperation(
-        method = "renderLevel",
+    // Mount the player's camera to the ship they are mounted on.
+    //
+    // 1.21.11 NOTE: This hook used to be a @WrapOperation on prepareCullFrustum (formerly
+    // called from GameRenderer.renderLevel). In 1.21.11, GameRenderer.renderLevel calls
+    // extractCamera(f) early -- it snapshots camera.position/rotation/entity into a
+    // CameraRenderState that downstream rendering reads from. Any camera mutation that
+    // happens AFTER extractCamera (i.e. inside LevelRenderer.renderLevel via the old
+    // wrap-op site) is invisible to entity submit, terrain offsets, sky/clouds, etc.
+    // The fix is to mutate the camera BEFORE extractCamera runs -- right after the
+    // vanilla Camera.setup() call inside updateCamera. Then the snapshot picks up the
+    // ship-coupled state and every downstream pass sees a consistent view.
+    @Inject(
+        method = "updateCamera",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;prepareCullFrustum(Lnet/minecraft/world/phys/Vec3;Lorg/joml/Matrix4f;Lorg/joml/Matrix4f;)V"
-        )
+            target = "Lnet/minecraft/client/Camera;setup(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/Entity;ZZF)V",
+            shift = At.Shift.AFTER
+        ),
+        require = 1
     )
-    private void setupCameraWithMountedShip(LevelRenderer instance, Vec3 vec3, Matrix4f rotationMatrix, Matrix4f matrix4f2,
-        Operation<Void> prepareCullFrustum, final DeltaTracker deltaTracker) {
-        final Camera camera = this.mainCamera;
+    private void valkyrienskies$mountCameraToShip(final DeltaTracker deltaTracker, final CallbackInfo ci) {
+        valkyrienskies$applyShipMountCamera(deltaTracker);
+    }
 
-        if (camera == null) {
-            prepareCullFrustum.call(instance, vec3, rotationMatrix, matrix4f2);
-            return;
-        }
+    @org.spongepowered.asm.mixin.Unique
+    private void valkyrienskies$applyShipMountCamera(final DeltaTracker deltaTracker) {
+        ((IVSCamera) this.mainCamera).resetShipMountedRenderTransform();
 
-        ((IVSCamera) camera).resetShipMountedRenderTransform();
-
-        final ClientLevel clientLevel = minecraft.level;
-        final Entity player = minecraft.player;
-        if (clientLevel == null || player == null) {
-            prepareCullFrustum.call(instance, vec3, rotationMatrix, matrix4f2);
+        final ClientLevel clientLevel = this.minecraft.level;
+        final LocalPlayer localPlayer = this.minecraft.player;
+        if (clientLevel == null || localPlayer == null) {
             return;
         }
 
         final float partialTicks = deltaTracker.getGameTimeDeltaPartialTick(true);
-        final ShipMountedToData shipMountedToData = VSGameUtilsKt.getShipMountedToData(player, partialTicks);
+        final ShipMountedToData shipMountedToData = VSGameUtilsKt.getShipMountedToData(localPlayer, partialTicks);
         if (shipMountedToData == null) {
-            prepareCullFrustum.call(instance, vec3, rotationMatrix, matrix4f2);
             return;
         }
-
-        final Entity playerVehicle = player.getVehicle();
-        if (playerVehicle == null) {
-            prepareCullFrustum.call(instance, vec3, rotationMatrix, matrix4f2);
+        if (localPlayer.getVehicle() == null) {
             return;
         }
 
         final ClientShip clientShip = (ClientShip) shipMountedToData.getShipMountedTo();
+        final Entity cameraEntity =
+            this.minecraft.getCameraEntity() == null ? localPlayer : this.minecraft.getCameraEntity();
 
-        ((IVSCamera) camera).setupWithShipMounted(
-            this.minecraft.level,
-            this.minecraft.getCameraEntity() == null ? this.minecraft.player : this.minecraft.getCameraEntity(),
-            !this.minecraft.options.getCameraType().isFirstPerson(),
-            this.minecraft.options.getCameraType().isMirrored(),
+        // 2.4.80: Standing helm (helm over air -> Eureka standing pose) now uses a
+        // custom 3-stage F5 cycle instead of forcing 3rd-person always:
+        //   FIRST_PERSON       -> vanilla 1st person (no ship-mount, normal eye view)
+        //   THIRD_PERSON_BACK  -> vanilla 3rd person (no ship-mount; player visible
+        //                         via the 2.4.77 shouldRender cull bypass)
+        //   THIRD_PERSON_FRONT -> ship-mounted 3rd person (pulled-back ship view,
+        //                         thirdPersonReverse=false so it's a behind-the-player
+        //                         shot, not the mirrored front view)
+        // Vanilla F5 then cycles back to FIRST_PERSON.
+        //
+        // Background: 2.4.73 forced thirdPerson=true here whenever standing, so the
+        // user couldn't ever go back to true 1st person at the helm. Now that the
+        // 2.4.77 cull bypass makes the player visible in normal vanilla 3rd person,
+        // we don't need the force anymore -- we can give the user the full vanilla
+        // F5 cycle plus the immersive ship-mounted view as the 3rd option.
+        //
+        // Sitting helm (chair on a solid block) keeps the original VS2 behavior:
+        // always ship-mount, thirdPerson follows the user's F5 state, mirror follows
+        // CameraType.isMirrored(). Sitting players never had a visibility problem,
+        // and the original behavior preserves ship-rotation coupling in 1st person
+        // (useful when the ship rolls/pitches under you).
+        final Entity vehicle = localPlayer.getVehicle();
+        final boolean standing = vehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity
+            && vehicle.level().getBlockState(vehicle.blockPosition()).isAir();
+        final CameraType cameraType = this.minecraft.options.getCameraType();
+
+        if (standing) {
+            // Only the THIRD_PERSON_FRONT slot of the F5 cycle triggers the immersive
+            // ship-mounted view. The other two slots fall through to vanilla camera.
+            if (cameraType != CameraType.THIRD_PERSON_FRONT) {
+                return;
+            }
+            ((IVSCamera) this.mainCamera).setupWithShipMounted(
+                clientLevel,
+                cameraEntity,
+                true,
+                false, // not mirrored: we want a behind-the-player shot in this slot
+                partialTicks,
+                clientShip,
+                shipMountedToData.getMountPosInShip()
+            );
+            return;
+        }
+
+        // Sitting helm (or non-helm passenger): preserve original VS2 behavior.
+        final boolean thirdPerson = !cameraType.isFirstPerson();
+        ((IVSCamera) this.mainCamera).setupWithShipMounted(
+            clientLevel,
+            cameraEntity,
+            thirdPerson,
+            cameraType.isMirrored(),
             partialTicks,
             clientShip,
             shipMountedToData.getMountPosInShip()
         );
-
-        // Set rotationMatrix to match the new camera rotation
-        Quaternionf quaternionf = camera.rotation().conjugate(new Quaternionf());
-        Matrix4f newRotationMatrix = (new Matrix4f()).rotation(quaternionf);
-        rotationMatrix.set(newRotationMatrix);
-
-        // Camera FOV changes based on the position of the camera, so recompute FOV to account for the change of camera
-        // position.
-        final double fov = this.getFov(camera, partialTicks, true);
-        final Matrix4f projectionMatrixNew = this.getProjectionMatrix(Math.max(fov, (double) this.minecraft.options.fov().get()));
-        prepareCullFrustum.call(instance, camera.position, rotationMatrix, projectionMatrixNew);
     }
     // endregion
 
     @ModifyReturnValue(method = "getDepthFar", at = @At("RETURN"))
     public float includeShipsIn(final float originalDepth) {
+        // 1.21.11 port / Iris: extending the far clip plane to the furthest loaded ship's
+        // AABB corner destabilizes the projection matrix and corrupts world terrain under
+        // shaders. Skip the extension while we confirm this is the cause.
+        if (true) {
+            return originalDepth;
+        }
         float maxDistance = originalDepth;
         for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(Minecraft.getInstance()).getLoadedShips()) {
             Vec3 cameraPos = this.mainCamera.position;

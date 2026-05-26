@@ -9,7 +9,17 @@ object VSKeyBindings {
     // TODO when making the addon utils for registering... this too
     private val toBeRegistered = mutableListOf<Consumer<Consumer<KeyMapping>>>()
 
-    // val shipUp = register("key.valkyrienskies.ship_up", 32, "category.valkyrienskies.driving")
+    // 1.21.11: KeyMapping.Category.register(name) throws if the same name is
+    // registered twice. Cache one Category per unique name and reuse it so
+    // multiple keybindings can share a category.
+    private val categories = mutableMapOf<String, KeyMapping.Category>()
+
+    // 2.4.80: shipUp added as a dedicated "ascend while at a helm" keybind so
+    // controller users (Controlify) can map a controller button to ship-ascend
+    // without also mapping their normal jump. Left UNBOUND by default so it never
+    // conflicts with vanilla jump on keyboard -- keyboard players keep using SPACE
+    // (vanilla jump) for ascend via the keyPresses.jump() path in ShipMountingEntity.
+    val shipUp = register("key.valkyrienskies.ship_up", GLFW.GLFW_KEY_UNKNOWN, "category.valkyrienskies.driving")
     val shipDown = register("key.valkyrienskies.ship_down", GLFW.GLFW_KEY_V, "category.valkyrienskies.driving")
     val shipCruise = register("key.valkyrienskies.ship_cruise", GLFW.GLFW_KEY_C, "category.valkyrienskies.driving")
 
@@ -26,8 +36,9 @@ object VSKeyBindings {
             override fun get(): KeyMapping = registered
             override fun accept(t: Consumer<KeyMapping>) {
                 // 1.21.11: KeyMapping's 3rd arg is KeyMapping.Category, not String.
-                // Category.register(String) creates/returns a registered category by name.
-                registered = KeyMapping(name, keyCode, KeyMapping.Category.register(category))
+                // Register each unique category name exactly once and reuse it.
+                val cat = categories.getOrPut(category) { KeyMapping.Category.register(category) }
+                registered = KeyMapping(name, keyCode, cat)
                 t.accept(registered)
             }
         }.apply { toBeRegistered.add(this) }

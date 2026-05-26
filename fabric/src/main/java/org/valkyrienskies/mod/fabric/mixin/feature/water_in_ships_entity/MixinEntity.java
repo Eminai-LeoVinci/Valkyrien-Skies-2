@@ -6,6 +6,7 @@ import com.llamalad7.mixinextras.sugar.Local;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.BlockGetter;
@@ -23,6 +24,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.At.Shift;
 import org.spongepowered.asm.mixin.injection.Constant;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -54,6 +56,15 @@ public abstract class MixinEntity {
 
     @Shadow
     public abstract boolean updateFluidHeightAndDoFluidPushing(TagKey<Fluid> tagKey, double d);
+
+    @Shadow
+    public abstract void lavaIgnite();
+
+    @Shadow
+    public abstract void lavaHurt();
+
+    @Shadow
+    public abstract void extinguishFire();
 
     @Unique
     private boolean isShipWater = false;
@@ -87,6 +98,16 @@ public abstract class MixinEntity {
      * */
     @Unique
     private double valkyrienskies$fluidPushE = 0;
+
+    // 1.21.11 moved lava burning into InsideBlockEffectApplier (world-space block scan only), so
+    // ship lava never triggers it. Set when the ship fluid scan finds lava reaching the entity.
+    @Unique
+    private boolean valkyrienskies$inShipLava = false;
+
+    // 1.21.11 likewise drives water fire-extinguishing off a world-space block scan, so ship
+    // water never puts the entity out. Set when the ship fluid scan finds water reaching it.
+    @Unique
+    private boolean valkyrienskies$inShipWater = false;
 
     @Unique
     private boolean inShipContext() {
@@ -127,6 +148,12 @@ public abstract class MixinEntity {
             valkyrienskies$fluidPushE = e;
             valkyrienskies$fluidPushNumber += numberPush;
             valkyrienskies$fluidPushVec = valkyrienskies$fluidPushVec.add(vec3);
+            if (bl2 && FluidTags.LAVA.equals(tagKey)) {
+                valkyrienskies$inShipLava = true;
+            }
+            if (bl2 && FluidTags.WATER.equals(tagKey)) {
+                valkyrienskies$inShipWater = true;
+            }
             cir.setReturnValue(bl2);
         }
     }
@@ -144,6 +171,8 @@ public abstract class MixinEntity {
         valkyrienskies$fluidPushNumber = numberPush;
         valkyrienskies$fluidPushRet = bl2;
         valkyrienskies$fluidPushVec = instance;
+        valkyrienskies$inShipLava = false;
+        valkyrienskies$inShipWater = false;
         IEntityDraggingInformationProvider provider = (IEntityDraggingInformationProvider) (Object) this;
         boolean sealed = provider.vs$isInSealedArea();
         VSGameUtilsKt.transformFromWorldToNearbyShips(level, aabb, (shipAabb) -> {
@@ -152,6 +181,15 @@ public abstract class MixinEntity {
             //recall in the ship context
         });
         valkyrienskies$fluidPushAABB = null; //disable ship context
+        if (valkyrienskies$inShipLava && !sealed) {
+            // ship lava is missed by InsideBlockEffectApplier; re-apply ignite + damage
+            lavaIgnite();
+            lavaHurt();
+        }
+        if (valkyrienskies$inShipWater && !sealed) {
+            // ship water is missed by the world-space extinguish scan; put the entity's fire out
+            extinguishFire();
+        }
         return valkyrienskies$fluidPushVec.length();
     }
     
@@ -180,6 +218,20 @@ public abstract class MixinEntity {
     private void setFluidPushingReturnValue(TagKey<Fluid> tagKey, double d, CallbackInfoReturnable<Boolean> cir) {
         valkyrienskies$fluidPushE = 0;
         cir.setReturnValue(valkyrienskies$fluidPushRet);
+    }
+
+    // The ship-context recursion accumulates the combined world+ship fluid height into fluidPushE, but
+    // vanilla's fluidHeight.put stores only the world-context d -> isInLava() ignores ship lava. Fix the arg.
+    @ModifyArg(
+        method = "updateFluidHeightAndDoFluidPushing",
+        at = @At(
+            value = "INVOKE",
+            target = "Lit/unimi/dsi/fastutil/objects/Object2DoubleMap;put(Ljava/lang/Object;D)D"
+        ),
+        index = 1
+    )
+    private double valkyrienskies$includeShipFluidHeight(double original) {
+        return valkyrienskies$fluidPushE;
     }
 
 

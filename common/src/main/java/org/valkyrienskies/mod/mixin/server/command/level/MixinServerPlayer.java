@@ -29,8 +29,9 @@ public abstract class MixinServerPlayer extends Player {
     @Shadow
     public abstract void teleportTo(double d, double e, double f);
 
+    // 1.21.11: gained a trailing boolean (setCamera) parameter.
     @Shadow
-    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h);
+    public abstract boolean teleportTo(ServerLevel serverLevel, double d, double e, double f, Set<Relative> set, float g, float h, boolean setCamera);
 
     @Inject(
         at = @At("HEAD"),
@@ -69,7 +70,7 @@ public abstract class MixinServerPlayer extends Player {
             final Vector3d inWorld = ship.getTransform().getShipToWorld().transformPosition(x, y, z, new Vector3d());
             final Vector3d inWorldPrev = ship.getPrevTickTransform().getShipToWorld().transformPosition(x, y, z, new Vector3d());
             final Vector3d inWorldNext = inWorld.mul(3, new Vector3d()).sub(inWorldPrev.mul(2, new Vector3d()));
-            this.teleportTo(level, inWorldNext.x, inWorldNext.y, inWorldNext.z, Set.of(), this.getYRot(), this.getXRot());
+            this.teleportTo(level, inWorldNext.x, inWorldNext.y, inWorldNext.z, Set.of(), this.getYRot(), this.getXRot(), true);
             ((IEntityDraggingInformationProvider)this).vs$dragImmediately(ship);
         }
     }

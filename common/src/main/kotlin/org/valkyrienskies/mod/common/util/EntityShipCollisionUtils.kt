@@ -10,6 +10,8 @@ import net.minecraft.world.level.Level
 import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.minecraft.world.phys.shapes.VoxelShape
+import org.joml.Vector3d
+import org.joml.Vector3dc
 import org.joml.primitives.AABBd
 import org.joml.primitives.AABBdc
 import org.joml.primitives.AABBi
@@ -170,7 +172,53 @@ object EntityShipCollisionUtils {
         val (newMovement, shipCollidingWith) = collider.adjustEntityMovementForPolygonCollisions(
             movement.toJOML(), collisionBoundingBox.toJOML(), stepHeight, collidingShipPolygons
         )
-        if (entity != null) {
+
+        // 2.4.88 fix: per-axis magnitude clamp for gliding (fall-flying / elytra) entities.
+        // The polygon collider is only allowed to DECREASE movement magnitude on each axis,
+        // never INCREASE it. Without this, two cases inject boost velocity into the glider:
+        //
+        //   1. Polygon extraction: when the player tunnels into a ship block at high glide
+        //      speed, the collider's next-tick response is a large normal-direction push to
+        //      extract them. That push has magnitude far exceeding requested movement, and
+        //      the 2.4.86 projection mixin converts the resulting deltaMovement into
+        //      tangent-to-hull velocity — which elytra realignment then rotates back into
+        //      the look direction next tick. Speed never bleeds off, and the condition is
+        //      re-triggered every subsequent glide near the ship, so the boost persists
+        //      until the world reloads.
+        //   2. Ship-velocity carry-over: an ascending or moving ship's per-tick velocity
+        //      gets baked into the collider's adjusted movement (e.g., to make passengers
+        //      ride along). A gliding player isn't a passenger, but if the collider treats
+        //      their overlapping bounding box as one, ship velocity injects into the
+        //      player's movement and accumulates the same way as case 1.
+        //
+        // Per-axis rule: if |adjusted_axis| > |requested_axis|, clamp the axis to the
+        // requested value (sign of requested preserved). Otherwise pass through. This
+        // means normal collision responses (collider clipping movement on a wall) work as
+        // before — only the over-injection cases are neutralized. It also fixes a subtle
+        // bug in 2.4.87's Y-only clamp: that condition was `newMovement.y > movement.y`,
+        // which is true both when a ship pushes a hovering glider upward AND when a ship
+        // slows a falling glider. The latter shouldn't be clamped (the slow is the deck
+        // catching the player, not an injection); the magnitude rule handles both cases
+        // correctly.
+        //
+        // Tradeoff: gliding entities can no longer be PUSHED by ships, only STOPPED. A
+        // player phased inside a ship will need to stop gliding before the polygon collider
+        // can extract them. We also skip the lastShipStoodOn assignment so the player isn't
+        // implicitly tracked as "on the ship" while gliding above it (this would otherwise
+        // route ship-block speed factors and dragger state through them via
+        // EntityDragger and getBlockPosBelowThatAffectsMyMovement).
+        val isGliding = entity is IEntityDraggingInformationProvider && (entity as IEntityDraggingInformationProvider).`vs$isGliding`()
+        val finalMovement: Vector3dc = if (isGliding) {
+            Vector3d(
+                if (kotlin.math.abs(newMovement.x()) > kotlin.math.abs(movement.x())) movement.x() else newMovement.x(),
+                if (kotlin.math.abs(newMovement.y()) > kotlin.math.abs(movement.y())) movement.y() else newMovement.y(),
+                if (kotlin.math.abs(newMovement.z()) > kotlin.math.abs(movement.z())) movement.z() else newMovement.z()
+            )
+        } else {
+            newMovement
+        }
+
+        if (entity != null && !isGliding) {
             val standingOnShip = entity.level().getLoadedShipManagingPos(entity.onPos)
             if (shipCollidingWith != null && standingOnShip != null && standingOnShip.id == shipCollidingWith) {
                 // Update the [IEntity.lastShipStoodOn]
@@ -180,7 +228,7 @@ object EntityShipCollisionUtils {
                 }
             }
         }
-        return newMovement.toMinecraft()
+        return finalMovement.toMinecraft()
     }
 
     fun getShipPolygonsCollidingWithEntity(

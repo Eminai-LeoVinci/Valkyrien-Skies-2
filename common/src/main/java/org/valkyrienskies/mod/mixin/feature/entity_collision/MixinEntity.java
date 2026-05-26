@@ -26,7 +26,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 import org.valkyrienskies.core.api.ships.Ship;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import org.valkyrienskies.mod.common.util.EntityDraggingInformation;
@@ -64,9 +63,21 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     )
     public Vec3 collideWithShips(final Entity entity, Vec3 movement, final Operation<Vec3> collide) {
         final AABB box = this.getBoundingBox();
+        final Vec3 requestedMovement = movement;
         movement = EntityShipCollisionUtils.INSTANCE
             .adjustEntityMovementForShipCollisions(entity, movement, box, this.level);
         final Vec3 collisionResultWithWorld = collide.call(entity, movement);
+
+        // 2.4.86: stash the original requested movement and the actual adjusted movement so
+        // valkyrienskies$projectVelocityAlongCollisionNormal can compute the collision-normal
+        // projection without depending on MixinExtras @Local ordinal resolution at the
+        // setDeltaMovement(DDD)V call site. The 2.4.84 @Local-based form may have been
+        // resolving to the wrong Vec3 in 1.21.11's move() bytecode (additional Vec3 locals
+        // from refactoring), so the fix never fired. These fields are populated once per
+        // move() call, then read once at the immediate setDeltaMovement call later in the
+        // same move(); no cross-tick lifetime needed.
+        this.vs$lastMoveRequestedMovement = requestedMovement;
+        this.vs$lastMoveAdjustedMovement = collisionResultWithWorld;
 
         if (collisionResultWithWorld.distanceToSqr(movement) > 1e-12) {
             // We collided with the world? Set the dragging ship to null.
@@ -79,49 +90,91 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
         return collisionResultWithWorld;
     }
 
+    @Unique
+    private Vec3 vs$lastMoveRequestedMovement = Vec3.ZERO;
+    @Unique
+    private Vec3 vs$lastMoveAdjustedMovement = Vec3.ZERO;
+
     /**
-     * This mixin replaces the following code in Entity.move().
+     * 2.4.84 / 2.4.86: Re-port of upstream PR #1712 — non-axis-aligned collision velocity response.
      *
-     * <p>if (movement.x != vec3d.x) { this.setVelocity(0.0D, vec3d2.y, vec3d2.z); } </p>
+     * <p>Replaces vanilla's axis-zeroing horizontal-collision response with one that removes only
+     * the velocity component PARALLEL TO THE ACTUAL COLLISION NORMAL. Vanilla zeroes the world X
+     * or Z axis when it hit something on that axis; that's correct for axis-aligned walls but
+     * WRONG for the slanted ship hulls produced by a rotated ship. The leftover velocity along
+     * the unzeroed axis still has a component pointing INTO the hull, and consecutive ticks of
+     * vanilla retrying that movement against the slanted surface can accumulate velocity. Combined
+     * with elytra's per-tick forward thrust, this produces the runaway speed boost users see when
+     * brushing a non-axis-aligned ship.
      *
-     * <p>if (movement.z != vec3d.z) { this.setVelocity(vec3d2.x, vec3d2.y, 0.0D); } </p>
+     * <p>2.4.86 change: 2.4.84 used MixinExtras {@code @Local(ordinal = 1)} to fetch the
+     * {@code movementAdjustedForCollisions} Vec3 at the {@code setDeltaMovement(DDD)V} call site.
+     * 1.21.11's {@code Entity.move()} was refactored (extra {@code Movement} record creation,
+     * {@code addMovementThisTick} call) and may have introduced additional Vec3 locals
+     * ({@code vec33}, {@code vec34}, {@code vec35}) that shift the ordinal away from {@code vec32}
+     * — that would silently misresolve the @Local and either no-op or apply wrong math. To
+     * eliminate that fragility, the 2.4.86 form stashes the requested and adjusted movement in
+     * {@code @Unique} fields during {@link #collideWithShips} (which always runs immediately
+     * before setDeltaMovement in the same move() call) and reads them back here. No @Local on
+     * the target's local variable table needed.
      *
-     * <p>This code makes accurate collision with non axis-aligned surfaces impossible, so this mixin replaces it. </p>
+     * <p>Why this also fixes elytra: with elytra (fall-flying), each tick vanilla collide()
+     * pushes the player out of the ship — produces a small
+     * {@code movementAdjustedForCollisions - movement} delta = the collision normal. Vanilla's
+     * old axis-zeroing then preserved velocity along the other world axis even though part of
+     * that axis projected INTO the hull, so {@code deltaMovement.dot(normal)} stayed nonzero
+     * across ticks. Elytra physics then multiplied this in the player's look direction. This
+     * mixin replaces that with: remove only the normal-direction component of velocity.
+     * Velocity along the hull surface (tangential) is preserved, but velocity INTO the hull is
+     * gone — exactly the physics intuition.
      */
-    @Inject(method = "move", at = @At(
-        value = "INVOKE",
-        target = "Lnet/minecraft/world/entity/Entity;setDeltaMovement(DDD)V"),
-        locals = LocalCapture.CAPTURE_FAILHARD, cancellable = true
+    @WrapOperation(
+        method = "move",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/Entity;setDeltaMovement(DDD)V"
+        )
     )
-    private void redirectSetVelocity(final MoverType moverType, final Vec3 movement, final CallbackInfo callbackInfo,
-        final Vec3 movementAdjustedForCollisions) {
+    private void valkyrienskies$projectVelocityAlongCollisionNormal(
+        final Entity instance, final double x, final double y, final double z,
+        final Operation<Void> original
+    ) {
+        final Vec3 movement = this.vs$lastMoveRequestedMovement;
+        final Vec3 movementAdjustedForCollisions = this.vs$lastMoveAdjustedMovement;
 
-        // Compute the collision response horizontal
-        final Vector3dc collisionResponseHorizontal =
-            new Vector3d(movementAdjustedForCollisions.x - movement.x, 0.0,
-                movementAdjustedForCollisions.z - movement.z);
+        // Horizontal collision response: how much vanilla clipped the requested movement.
+        final Vector3dc collisionResponseHorizontal = new Vector3d(
+            movementAdjustedForCollisions.x - movement.x,
+            0.0,
+            movementAdjustedForCollisions.z - movement.z
+        );
 
-        // Remove the component of [movementAdjustedForCollisions] that is parallel to [collisionResponseHorizontal]
         if (collisionResponseHorizontal.lengthSquared() > 1e-6) {
             final Vec3 deltaMovement = getDeltaMovement();
+            final Vector3dc collisionResponseHorizontalNormal =
+                collisionResponseHorizontal.normalize(new Vector3d());
 
-            final Vector3dc collisionResponseHorizontalNormal = collisionResponseHorizontal.normalize(new Vector3d());
+            // Component of current horizontal velocity that points along the collision normal.
             final double parallelHorizontalVelocityComponent =
-                collisionResponseHorizontalNormal
-                    .dot(deltaMovement.x, 0.0, deltaMovement.z);
+                collisionResponseHorizontalNormal.x() * deltaMovement.x
+                    + collisionResponseHorizontalNormal.z() * deltaMovement.z;
 
-            setDeltaMovement(
-                deltaMovement.x
-                    - collisionResponseHorizontalNormal.x() * parallelHorizontalVelocityComponent,
-                deltaMovement.y,
-                deltaMovement.z
-                    - collisionResponseHorizontalNormal.z() * parallelHorizontalVelocityComponent
+            // Subtract that parallel component out — keep tangential velocity (sliding along the
+            // surface) intact, but drop the into-surface component that vanilla axis-zeroing
+            // would have left as a slow drift on slanted hulls.
+            final double newX = deltaMovement.x - collisionResponseHorizontalNormal.x() * parallelHorizontalVelocityComponent;
+            final double newZ = deltaMovement.z - collisionResponseHorizontalNormal.z() * parallelHorizontalVelocityComponent;
+            original.call(
+                instance,
+                newX,
+                y, // y handled by vanilla — passed-through
+                newZ
             );
+        } else {
+            // No horizontal collision response in this branch (rare — e.g. purely vertical) —
+            // fall through to vanilla's axis-zeroing values unchanged.
+            original.call(instance, x, y, z);
         }
-        // The rest of the move function (including tryCheckInsideBlocks) is skipped, so calling it here
-        tryCheckInsideBlocks();
-        // Cancel the original invocation of Entity.setVelocity(DDD)V to remove vanilla behavior
-        callbackInfo.cancel();
     }
 
     // endregion
@@ -178,7 +231,7 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
      * @author tri0de
      * @reason Allows ship blocks to spawn landing particles, running particles, and play step sounds
      */
-    @Inject(method = "getOnPos", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getOnPos()Lnet/minecraft/core/BlockPos;", at = @At("HEAD"), cancellable = true)
     private void preGetOnPos(final CallbackInfoReturnable<BlockPos> cir) {
         final Vector3dc blockPosInGlobal = new Vector3d(
             position.x,
@@ -227,12 +280,6 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
 
     @Shadow
     public abstract void setDeltaMovement(double x, double y, double z);
-
-    @Shadow
-    protected abstract void tryCheckInsideBlocks();
-
-    @Shadow
-    protected abstract Vec3 collide(Vec3 vec3d);
 
     @Shadow
     public abstract Vec3 getDeltaMovement();

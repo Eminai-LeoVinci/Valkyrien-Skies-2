@@ -1,6 +1,7 @@
 package org.valkyrienskies.mod.mixin.world.entity;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -62,8 +63,14 @@ public abstract class MixinPlayer extends LivingEntity implements PlayerDuck {
     @Shadow
     public abstract double blockInteractionRange();
 
+    @Shadow
+    public abstract double entityInteractionRange();
+
+    // 1.21.11 port: Player.canInteractWithBlock(BlockPos,double) was renamed to
+    // isWithinBlockInteractionRange(BlockPos,double). Without this the server reach check
+    // always rejects ship blocks, since their real coordinates are in the far-away shipyard.
     @Inject(
-        method = "canInteractWithBlock",
+        method = "isWithinBlockInteractionRange",
         at = @At("RETURN"),
         cancellable = true
     )
@@ -80,5 +87,32 @@ public abstract class MixinPlayer extends LivingEntity implements PlayerDuck {
             final double distanceSq = (new AABB(blockPos)).distanceToSqr(eyePosInShip) * ship.getTransform().getShipToWorldScaling().x() * ship.getTransform().getShipToWorldScaling().x();
             cir.setReturnValue(distanceSq < e * e);
         }
+    }
+
+    // 1.21.11: isWithinEntityInteractionRange reach-checks an entity by its raw bounding box,
+    // which for a shipyard entity (item frame, ...) sits millions of blocks away in the shipyard
+    // -- so the client drops the use-on-entity interaction in Minecraft.startUseItem before any
+    // packet is sent. Mirrors includeShipsInDistanceCheck (the block-reach fix) but for entities.
+    @Inject(
+        method = "isWithinEntityInteractionRange(Lnet/minecraft/world/entity/Entity;D)Z",
+        at = @At("RETURN"),
+        cancellable = true,
+        require = 1
+    )
+    private void valkyrienskies$includeShipsInEntityInteractionRange(final Entity entity,
+        final double extraRange, final CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValueZ()) {
+            return;
+        }
+        final Ship ship = VSGameUtilsKt.getShipManagingPos(level(), entity.blockPosition());
+        if (ship == null) {
+            return;
+        }
+        final double e = this.entityInteractionRange() + extraRange;
+        final Vec3 eyePosInShip = VectorConversionsMCKt.toMinecraft(
+            ship.getWorldToShip().transformPosition(VectorConversionsMCKt.toJOML(getEyePosition())));
+        final double scale = ship.getTransform().getShipToWorldScaling().x();
+        final double distanceSq = entity.getBoundingBox().distanceToSqr(eyePosInShip) * scale * scale;
+        cir.setReturnValue(distanceSq < e * e);
     }
 }

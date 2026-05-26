@@ -211,7 +211,13 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         method = "tickChildren",
         at = @At(
             value = "INVOKE",
-            target = "Lnet/minecraft/server/network/ServerConnectionListener;tick()V",
+            // 1.21.11: tickChildren no longer calls ServerConnectionListener.tick() inline -
+            // the connection tick was extracted into MinecraftServer.tickConnection(). This
+            // injection drives ChunkManagement.tickChunkLoading, which calls
+            // setExecutedChunkWatchTasks; that is the pipeline's SET_EXECUTED stage. If this
+            // injection fails to bind (e.g. wrong target), postTickGame crashes vs-core with
+            // "Constraints failed. Stages since last reset: [PRE_TICK, POST_TICK]".
+            target = "Lnet/minecraft/server/MinecraftServer;tickConnection()V",
             shift = Shift.AFTER
         )
     )

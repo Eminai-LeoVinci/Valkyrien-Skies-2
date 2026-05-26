@@ -3,17 +3,15 @@ package org.valkyrienskies.mod.mixin.mod_compat.sodium;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
-import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSection;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
+import net.caffeinemc.mods.sodium.client.render.chunk.TaskQueueType;
+import net.caffeinemc.mods.sodium.client.render.chunk.lists.OcclusionSectionCollector;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.SortedRenderLists;
-import net.caffeinemc.mods.sodium.client.render.chunk.lists.VisibleChunkCollector;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
+import net.caffeinemc.mods.sodium.client.util.FogParameters;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -26,6 +24,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.valkyrienskies.core.api.ships.ClientShip;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import org.valkyrienskies.mod.mixinducks.mod_compat.sodium.RenderSectionManagerDuck;
@@ -63,51 +62,47 @@ public abstract class MixinRenderSectionManager implements RenderSectionManagerD
     protected abstract RenderSection getRenderSection(int x, int y, int z);
 
     @Shadow
-    private Map<ChunkUpdateType, ArrayDeque<RenderSection>> taskLists;
+    private Map<TaskQueueType, ArrayDeque<RenderSection>> taskLists;
 
     @Shadow
     public abstract void tickVisibleRenders();
 
     @Inject(at = @At("TAIL"), method = "createTerrainRenderList")
-    private void afterIterateChunks(Camera camera, Viewport viewport, int frame, boolean spectator, CallbackInfo ci) {
+    private void afterIterateChunks(final Camera camera, final Viewport viewport, final FogParameters fogParameters,
+        final int frame, final boolean spectator, final CallbackInfoReturnable<Boolean> cir) {
+
         for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(Minecraft.getInstance()).getLoadedShips()) {
-            final VisibleChunkCollector collector = new VisibleChunkCollector(frame);
+            // 0.8 replaced VisibleChunkCollector with SectionCollector. We visit ship sections directly
+            // instead of walking the cull graph, so ZERO_FRAME_DEFER just makes ship rebuilds prompt.
+            final OcclusionSectionCollector collector =
+                new OcclusionSectionCollector(frame, TaskQueueType.ZERO_FRAME_DEFER, TaskQueueType.ZERO_FRAME_DEFER);
 
             ship.getActiveChunksSet().forEach((x, z) -> {
                 final LevelChunk levelChunk = level.getChunk(x, z);
-                for (int y = level.getMinSection(); y < level.getMaxSection(); y++) {
-                    // If the chunk section is empty then skip it
-                    final LevelChunkSection levelChunkSection = levelChunk.getSection(y - level.getMinSection());
-                    if (levelChunkSection.hasOnlyAir()) {
+                final LevelChunkSection[] sections = levelChunk.getSections();
+                for (int i = 0; i < sections.length; i++) {
+                    if (sections[i].hasOnlyAir()) {
                         continue;
                     }
-                    // TODO: Add occlusion logic here?
-
-                    final RenderSection section = getRenderSection(x, y, z);
-
+                    final int sectionY = levelChunk.getSectionYFromSectionIndex(i);
+                    final RenderSection section = getRenderSection(x, sectionY, z);
                     if (section == null) {
                         continue;
                     }
-
                     collector.visit(section);
                 }
             });
 
             shipRenderLists.put(ship, collector.createRenderLists(viewport));
 
-            // merge rebuild lists
-            for (final var entry : collector.getRebuildLists().entrySet()) {
-                this.taskLists.get(entry.getKey()).addAll(entry.getValue());
+            // Merge ship rebuild tasks into the manager's queues, otherwise ship chunks never get built.
+            for (final var entry : collector.getTaskLists().entrySet()) {
+                final ArrayDeque<RenderSection> managerQueue = this.taskLists.get(entry.getKey());
+                if (managerQueue != null) {
+                    managerQueue.addAll(entry.getValue());
+                }
             }
         }
-        this.rebuildLists.forEach(
-            (type, rebuildLists) -> {
-                final List<RenderSection> rebuildSorted = new ArrayList<>(rebuildLists);
-                rebuildSorted.sort(Comparator.comparingDouble(section -> section.getSquaredDistance(camera.getBlockPosition())));
-                rebuildLists.clear();
-                rebuildLists.addAll(rebuildSorted);
-            }
-        );
     }
 
     @WrapMethod(method = "tickVisibleRenders")

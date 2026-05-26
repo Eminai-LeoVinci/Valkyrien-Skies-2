@@ -97,7 +97,7 @@ public abstract class MixinLevelChunk extends ChunkAccess implements VSLevelChun
     }
 
     @Inject(method = "setBlockState", at = @At("TAIL"))
-    public void postSetBlockState(final BlockPos pos, final BlockState state, final boolean moved,
+    public void postSetBlockState(final BlockPos pos, final BlockState state, final int flags,
         final CallbackInfoReturnable<BlockState> cir) {
         final BlockState prevState = cir.getReturnValue();
         // This function is getting invoked by non-game threads for some reason. So use executeOrSchedule() to schedule

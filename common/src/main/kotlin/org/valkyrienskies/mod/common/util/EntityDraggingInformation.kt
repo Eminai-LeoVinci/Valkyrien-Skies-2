@@ -77,6 +77,16 @@ interface IEntityDraggingInformationProvider {
 
     fun `vs$shouldDrag`(): Boolean
 
+    /**
+     * Whether the entity is currently elytra-gliding (fall-flying). Supports the 2.4.88
+     * polygon-collider per-axis magnitude clamp in EntityShipCollisionUtils, which prevents
+     * the collider from injecting boost velocity into a glider near a ship hull. Detected
+     * via shared entity flag 7 (same flag vanilla LivingEntity.isFallFlying reads).
+     */
+    fun `vs$isGliding`(): Boolean {
+        return false
+    }
+
     fun `vs$isInSealedArea`(): Boolean {
         return false
     }
