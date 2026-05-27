@@ -54,7 +54,13 @@ dependencies {
     modCompileOnly(files("$rootDir/libs/sodium-fabric-0.8.11-loompatched.jar"))
     // Disable indium until we update sodium to newer versions
     //modRuntimeOnly("maven.modrinth:indium:${indium_version}")
-    modImplementation("maven.modrinth:modmenu:${modmenu_version}")
+    // Mod Menu — removed from dev runtime for the 1.21.11 port. The pinned 11.0.3 is the
+    // 1.20.1 build; its MixinTitleScreen targets TitleScreen.adjustRealmsHeight which no
+    // longer exists in 1.21.11, crashing the client at TitleScreen mixin-apply. No VS2
+    // source references modmenu's API, so this dep was purely a dev-convenience for
+    // browsing installed mods in-game. The CurseForge publish script still declares it
+    // as an optionalDependency. Bump modmenu_version and re-enable when restoring.
+    //modImplementation("maven.modrinth:modmenu:${modmenu_version}")
 
     // Depend on the fabric API
     modImplementation("net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}")

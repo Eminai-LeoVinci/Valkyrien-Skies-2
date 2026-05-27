@@ -196,6 +196,12 @@ subprojects {
         compilerOptions {
             optIn.add("org.valkyrienskies.core.api.VsBeta")
         }
+        // Pin the Kotlin compiler daemon to JDK 21. Without this, Gradle's
+        // toolchain auto-detection can pick up a newer JDK (e.g. JDK 25) for
+        // the Kotlin worker, and Kotlin 2.0.0's embedded IntelliJ JavaVersion
+        // parser only handles versions up to ~24 — JDK 25 crashes compileKotlin
+        // with "IllegalArgumentException: 25.0.1".
+        jvmToolchain(21)
     }
 }
 

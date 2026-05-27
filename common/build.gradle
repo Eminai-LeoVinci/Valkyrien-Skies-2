@@ -50,8 +50,13 @@ dependencies {
     // Hexcasting-family compat from 1.20.1 does not currently resolve on 1.21.1.
     // The related sources are excluded below until the 1.21.1 coordinates are restored.
 
-    // Supplementaries (Moonlight Lib)
-    modImplementation("maven.modrinth:moonlight:$moonlight_version")
+    // Supplementaries (Moonlight Lib) — removed for the 1.21.11 port.
+    // The only code reference (mixin/mod_compat/moonlight/MixinFakeServerLevel) is excluded
+    // by the source-set rule below, so this dep was unused at build time. Keeping it as a
+    // modImplementation pulled the stale 1.20.1 Moonlight jar into dev runs, where Fabric
+    // Loader rejected it with "requires fabric 0.86.0+". Restore (and bump moonlight_version
+    // in gradle.properties) when re-enabling the compat mixin.
+    // modImplementation("maven.modrinth:moonlight:$moonlight_version")
 
     // Common create compat,
     // We just use a version from a platform and hope the classes exist on both versions and mixins apply correctly
