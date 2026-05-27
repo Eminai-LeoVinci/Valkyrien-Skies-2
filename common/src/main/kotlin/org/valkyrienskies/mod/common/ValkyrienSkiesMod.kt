@@ -214,9 +214,11 @@ object ValkyrienSkiesMod {
                 if (::TEST_THRUSTER.isInitialized) output.accept(TEST_THRUSTER)
                 if (::TEST_ANTIGRAV.isInitialized) output.accept(TEST_ANTIGRAV)
                 if (::CONNECTION_CHECKER_ITEM.isInitialized) output.accept(CONNECTION_CHECKER_ITEM)
-                if (::SHIP_CREATOR_ITEM.isInitialized) output.accept(SHIP_CREATOR_ITEM)
-                if (::SHIP_ASSEMBLER_ITEM.isInitialized) output.accept(SHIP_ASSEMBLER_ITEM)
-                if (::SHIP_CREATOR_ITEM_SMALLER.isInitialized) output.accept(SHIP_CREATOR_ITEM_SMALLER)
+                // Dev-only ship debug items hidden from the creative tab. Still registered so
+                // existing item stacks in chests / inventories load fine and /give works.
+                // if (::SHIP_CREATOR_ITEM.isInitialized) output.accept(SHIP_CREATOR_ITEM)
+                // if (::SHIP_ASSEMBLER_ITEM.isInitialized) output.accept(SHIP_ASSEMBLER_ITEM)
+                // if (::SHIP_CREATOR_ITEM_SMALLER.isInitialized) output.accept(SHIP_CREATOR_ITEM_SMALLER)
                 if (::AREA_ASSEMBLER_ITEM.isInitialized) output.accept(AREA_ASSEMBLER_ITEM)
                 if (::PHYSICS_ENTITY_CREATOR_ITEM.isInitialized) output.accept(PHYSICS_ENTITY_CREATOR_ITEM)
             }
