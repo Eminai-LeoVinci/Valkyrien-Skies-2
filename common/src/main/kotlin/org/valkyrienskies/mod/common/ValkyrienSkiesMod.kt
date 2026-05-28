@@ -23,6 +23,7 @@ import org.valkyrienskies.core.api.ships.properties.ShipId
 import org.valkyrienskies.core.api.util.GameTickOnly
 import org.valkyrienskies.core.api.util.PhysTickOnly
 import org.valkyrienskies.core.api.world.properties.DimensionId
+import org.valkyrienskies.core.impl.config.VSCoreConfig
 import org.valkyrienskies.core.internal.VsiCore
 import org.valkyrienskies.core.internal.VsiCoreClient
 import org.valkyrienskies.mod.api.BlockEntityPhysicsListener
@@ -115,6 +116,22 @@ object ValkyrienSkiesMod {
     fun init() {
         val core = this.vsCore
 
+        // vs-core watches/streams a ship's chunks (and runs its physics) only while at
+        // least one player is within shipLoadDistance of it. This is *independent* of
+        // MC's view-distance and simulation-distance, so we can let ships keep simulating
+        // far past where the world stops ticking - exactly what you want for ships that
+        // fly out of render range and don't "pause" when you look away.
+        //
+        // vs-core default is 128 blocks (8 chunks). Bumped to 4096/4480 (256/280 chunks)
+        // so a ship in flight keeps moving even when it's well outside the player's view
+        // distance. Increase further if you want longer unattended flights; cost scales
+        // with ship-count x area, not world chunks.
+        //
+        // Set before VSConfigUpdater is class-loaded so these are the config-spec defaults;
+        // the vs-core server TOML can still override them per-world without a rebuild.
+        VSCoreConfig.SERVER.shipLoadDistance = 4096.0
+        VSCoreConfig.SERVER.shipUnloadDistance = 4480.0
+
         BlockStateInfo.init()
         VSGamePackets.register()
         VSGamePackets.registerHandlers()
@@ -196,9 +213,11 @@ object ValkyrienSkiesMod {
                 if (::TEST_THRUSTER.isInitialized) output.accept(TEST_THRUSTER)
                 if (::TEST_ANTIGRAV.isInitialized) output.accept(TEST_ANTIGRAV)
                 if (::CONNECTION_CHECKER_ITEM.isInitialized) output.accept(CONNECTION_CHECKER_ITEM)
-                if (::SHIP_CREATOR_ITEM.isInitialized) output.accept(SHIP_CREATOR_ITEM)
-                if (::SHIP_ASSEMBLER_ITEM.isInitialized) output.accept(SHIP_ASSEMBLER_ITEM)
-                if (::SHIP_CREATOR_ITEM_SMALLER.isInitialized) output.accept(SHIP_CREATOR_ITEM_SMALLER)
+                // Dev-only ship debug items hidden from the creative tab. Still registered
+                // so existing item stacks in chests / inventories load fine and /give works.
+                // if (::SHIP_CREATOR_ITEM.isInitialized) output.accept(SHIP_CREATOR_ITEM)
+                // if (::SHIP_ASSEMBLER_ITEM.isInitialized) output.accept(SHIP_ASSEMBLER_ITEM)
+                // if (::SHIP_CREATOR_ITEM_SMALLER.isInitialized) output.accept(SHIP_CREATOR_ITEM_SMALLER)
                 if (::AREA_ASSEMBLER_ITEM.isInitialized) output.accept(AREA_ASSEMBLER_ITEM)
                 if (::PHYSICS_ENTITY_CREATOR_ITEM.isInitialized) output.accept(PHYSICS_ENTITY_CREATOR_ITEM)
             }

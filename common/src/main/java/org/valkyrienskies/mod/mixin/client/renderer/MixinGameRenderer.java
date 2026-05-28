@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.ModifyReturnValue;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.Camera;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -262,11 +263,48 @@ public abstract class MixinGameRenderer {
 
         final ClientShip clientShip = (ClientShip) shipMountedToData.getShipMountedTo();
 
+        // 2.4.80: Standing helm (helm over air -> Eureka standing pose) now uses a
+        // custom 3-stage F5 cycle instead of forcing 3rd-person always:
+        //   FIRST_PERSON       -> vanilla 1st person (no ship-mount, normal eye view)
+        //   THIRD_PERSON_BACK  -> vanilla 3rd person (no ship-mount; player visible
+        //                         via the 2.4.77 shouldRender cull bypass in MixinLevelRenderer)
+        //   THIRD_PERSON_FRONT -> ship-mounted 3rd person (pulled-back ship view,
+        //                         thirdPersonReverse=false so it's a behind-the-player
+        //                         shot, not the mirrored front view)
+        // Vanilla F5 then cycles back to FIRST_PERSON.
+        //
+        // Sitting helm (chair on a solid block) keeps the original VS2 behavior:
+        // always ship-mount, thirdPerson follows the user's F5 state, mirror follows
+        // CameraType.isMirrored().
+        final boolean standing = playerVehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity
+            && playerVehicle.level().getBlockState(playerVehicle.blockPosition()).isAir();
+        final CameraType cameraType = this.minecraft.options.getCameraType();
+
+        if (standing && cameraType != CameraType.THIRD_PERSON_FRONT) {
+            // Standing + FIRST_PERSON or THIRD_PERSON_BACK: skip ship-mount entirely so
+            // vanilla camera + standard prepareCullFrustum runs. The 2.4.77 shouldRender
+            // cull bypass keeps the player body visible in normal 3rd person.
+            prepareCullFrustum.call(instance, vec3, rotationMatrix, matrix4f2);
+            return;
+        }
+
+        final boolean thirdPersonForSetup;
+        final boolean mirroredForSetup;
+        if (standing) {
+            // Only THIRD_PERSON_FRONT lands here for standing: ship-mounted behind-the-player view.
+            thirdPersonForSetup = true;
+            mirroredForSetup = false;
+        } else {
+            // Sitting: original behavior.
+            thirdPersonForSetup = !cameraType.isFirstPerson();
+            mirroredForSetup = cameraType.isMirrored();
+        }
+
         ((IVSCamera) camera).setupWithShipMounted(
             this.minecraft.level,
             this.minecraft.getCameraEntity() == null ? this.minecraft.player : this.minecraft.getCameraEntity(),
-            !this.minecraft.options.getCameraType().isFirstPerson(),
-            this.minecraft.options.getCameraType().isMirrored(),
+            thirdPersonForSetup,
+            mirroredForSetup,
             partialTicks,
             clientShip,
             shipMountedToData.getMountPosInShip()

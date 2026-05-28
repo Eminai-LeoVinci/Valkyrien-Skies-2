@@ -8,6 +8,8 @@ import java.util.SortedSet;
 import net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
 import net.caffeinemc.mods.sodium.client.render.chunk.lists.SortedRenderLists;
+import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
+import net.minecraft.client.Camera;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -23,10 +25,12 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.valkyrienskies.core.api.ships.ClientShip;
 import org.valkyrienskies.mod.common.VSClientGameUtils;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
+import org.valkyrienskies.mod.common.assembly.SeamlessChunksManager;
 import org.valkyrienskies.mod.mixinducks.mod_compat.sodium.RenderSectionManagerDuck;
 
 @Mixin(SodiumWorldRenderer.class)
@@ -122,6 +126,29 @@ public abstract class MixinSodiumWorldRenderer {
     private void isEntityVisible(final Entity entity, final CallbackInfoReturnable<Boolean> cir) {
         if (VSGameUtilsKt.isBlockInShipyard(level, entity.position())) {
             cir.setReturnValue(true);
+        }
+    }
+
+    /**
+     * Process deferred ship chunk packets every frame so that ship assembly /
+     * disassembly chunk updates actually reach the client when Sodium is the
+     * renderer. The vanilla-renderer path drains this queue from
+     * MixinLevelRendererVanilla, but that mixin is skipped under Sodium -- so
+     * without this hook the queue grows forever and ship blocks never visually
+     * move from world space to ship space (or vice versa). Ported from VS2
+     * 1.20.1 commit 4f2a0e40 ("fix chunk update packets do not process with
+     * sodium render"). Sodium 0.6.9 setupTerrain signature is
+     * (Camera, Viewport, boolean, boolean) -- frame index + updateChunksImmediately
+     * params from 1.20.1's Sodium 0.5 were collapsed into two booleans here.
+     * 1.20.1's light-queue drain (world.pollLightUpdates) is omitted: those
+     * methods come from a sister MixinClientChunkCache patch we didn't backport.
+     */
+    @Inject(method = "setupTerrain", at = @At("HEAD"))
+    private void drainShipChunksBeforeLightUpdate(final Camera camera, final Viewport viewport,
+        final boolean spectator, final boolean updateChunksImmediately, final CallbackInfo ci) {
+        final SeamlessChunksManager manager = SeamlessChunksManager.get();
+        if (manager != null) {
+            manager.drainDeferredBatch();
         }
     }
 }

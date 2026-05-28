@@ -21,10 +21,12 @@ import org.valkyrienskies.mod.common.toWorldCoordinates
 import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider
 import org.valkyrienskies.mod.common.util.toJOML
 import org.valkyrienskies.mod.common.util.toMinecraft
+import org.valkyrienskies.mod.util.logger
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
 object WorldEntityHandler : VSEntityHandler {
+    private val dbgLogger by logger()
     override fun freshEntityInShipyard(entity: Entity, ship: Ship) {
         moveEntityFromShipyardToWorld(entity, ship)
     }
@@ -45,6 +47,9 @@ object WorldEntityHandler : VSEntityHandler {
 
     override fun positionSetFromVehicle(self: Entity, vehicle: Entity, x: Double, y: Double, z: Double) {
         if (self.level().isBlockInShipyard(vehicle.position()) && vehicle.getShipManaging() == null) {
+            dbgLogger.warn(
+                "[VS-TD-DBG] positionSetFromVehicle STOP_RIDING side=${if (self.level().isClientSide) "client" else "server"} selfClass=${self.javaClass.simpleName} vehicleClass=${vehicle.javaClass.simpleName} vehiclePos=(${vehicle.x},${vehicle.y},${vehicle.z}) requestedPos=($x,$y,$z)"
+            )
             self.stopRiding()
             return
         }

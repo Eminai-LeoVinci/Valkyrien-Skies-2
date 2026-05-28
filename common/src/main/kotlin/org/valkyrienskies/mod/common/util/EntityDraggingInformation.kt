@@ -85,6 +85,10 @@ interface IEntityDraggingInformationProvider {
         // Default no-op
     }
 
+    fun `vs$isGliding`(): Boolean {
+        return false
+    }
+
     /**
      * Shortcut for entity initializations that requires to set the entity dragged without sliding.
      */

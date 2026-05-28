@@ -96,7 +96,9 @@ sourceSets {
             exclude "org/valkyrienskies/mod/mixin/mod_compat/flywheel/**"
             exclude "org/valkyrienskies/mod/mixin/mod_compat/create_big_cannons/**"
             exclude "org/valkyrienskies/mod/mixin/mod_compat/flywheel_renderer/**"
-            exclude "org/valkyrienskies/mod/mixin/mod_compat/sodium/**"
+            // sodium common mixins are included on 1.21.1 (Sodium 0.6.9 has all the shadow targets we need).
+            // Exclude only the orphan accessor that targets the pre-0.6.x me.jellysquid.* package and is unused anyway.
+            exclude "org/valkyrienskies/mod/mixin/mod_compat/sodium/RenderSectionManagerAccessor.java"
             exclude "org/valkyrienskies/mod/compat/FlywheelEvents.java"
             exclude "org/valkyrienskies/mod/compat/flywheel/**"
             exclude "org/valkyrienskies/mod/mixin/accessors/client/render/chunk/**"

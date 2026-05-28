@@ -55,7 +55,12 @@ public abstract class MixinLocalPlayer extends Entity implements IEntityDragging
                 }
             }
             if (realArg instanceof ServerboundMovePlayerPacket movePacket) {
-                final boolean isOnGround = movePacket.isOnGround() || getDraggingInformation().isEntityBeingDraggedByAShip();
+                // Don't force the on-ground flag while the player is airborne by intent (gliding,
+                // or jumping up off the deck): forcing it makes the server reject/cancel elytra
+                // flight near a ship.
+                final boolean draggedAndGrounded = getDraggingInformation().isEntityBeingDraggedByAShip()
+                    && !vs$isGliding() && getDeltaMovement().y <= 0.0;
+                final boolean isOnGround = movePacket.isOnGround() || draggedAndGrounded;
                 if (movePacket.hasPosition() && movePacket.hasRotation()) {
                     //posrot
                     realArg = new ServerboundMovePlayerPacket.PosRot(movePacket.getX(0.0), movePacket.getY(0.0), movePacket.getZ(0.0), movePacket.getYRot(0.0f), movePacket.getXRot(0.0f), isOnGround);

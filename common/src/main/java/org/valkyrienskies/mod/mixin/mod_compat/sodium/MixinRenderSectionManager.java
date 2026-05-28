@@ -3,9 +3,6 @@ package org.valkyrienskies.mod.mixin.mod_compat.sodium;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkUpdateType;
@@ -100,14 +97,11 @@ public abstract class MixinRenderSectionManager implements RenderSectionManagerD
                 this.taskLists.get(entry.getKey()).addAll(entry.getValue());
             }
         }
-        this.rebuildLists.forEach(
-            (type, rebuildLists) -> {
-                final List<RenderSection> rebuildSorted = new ArrayList<>(rebuildLists);
-                rebuildSorted.sort(Comparator.comparingDouble(section -> section.getSquaredDistance(camera.getBlockPosition())));
-                rebuildLists.clear();
-                rebuildLists.addAll(rebuildSorted);
-            }
-        );
+        // Sodium 0.6.9 -> 0.6.13: the dedicated `rebuildLists` field was removed
+        // (consolidated into `taskLists`). The original block sorted that queue by
+        // distance to camera so closer ship+world chunks rebuilt first. Without an
+        // equivalent field on 0.6.13 we skip the sort -- rendering still works,
+        // just with a slightly less optimal rebuild order during chunk loads.
     }
 
     @WrapMethod(method = "tickVisibleRenders")

@@ -410,6 +410,9 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     @Shadow
     public abstract void setSwimming(boolean bl);
 
+    @Shadow
+    protected abstract boolean getSharedFlag(int flag);
+
     @Override
     @NotNull
     public EntityDraggingInformation getDraggingInformation() {
@@ -419,6 +422,12 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     @Override
     public boolean vs$shouldDrag() {
         return true;
+    }
+
+    @Override
+    public boolean vs$isGliding() {
+        // Shared flag 7 = fall flying / elytra gliding.
+        return getSharedFlag(7);
     }
 
     @Override
