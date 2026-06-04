@@ -74,14 +74,15 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
         return super.getDismountLocationForPassenger(livingEntity)
     }
 
-    // A standing-helm seat sits over an air block (a chair sits over a solid one -- see
-    // ShipHelmBlockEntity.spawnSeat). Place the helm rider exactly at the seat origin
-    // (deck level) so their feet rest flush, instead of at the default passenger height.
+    // Helm seats are the only ShipMountingEntity players ride (Eureka's spawnSeat always marks
+    // the seat as the controller), and the rider stands at the wheel -- so place them exactly
+    // at the seat origin (deck level) for flush footing rather than the default raised
+    // passenger height. This used to gate on an air-block probe, but the seat lives in shipyard
+    // space where blockPosition() doesn't map to the helm cleanly, so the probe regressed the
+    // rider to a raised, hovering seat. Positioning is unconditional here so it stays identical
+    // on client and server (the controller flag is never synced to clients).
     override fun getPassengerRidingPosition(entity: Entity): Vec3 {
-        if (level().getBlockState(blockPosition()).isAir) {
-            return position()
-        }
-        return super.getPassengerRidingPosition(entity)
+        return position()
     }
 
     // 1.21.11: these now take ValueInput/ValueOutput instead of CompoundTag. Bodies stay empty —

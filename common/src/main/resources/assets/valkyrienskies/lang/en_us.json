@@ -8,9 +8,11 @@
 
   "tooltip.valkyrienskies.mass": "Mass",  
   "category.valkyrienskies.driving": "Driving",
+  "category.valkyrienskies.rendering": "Rendering",
   "key.valkyrienskies.ship_cruise": "Cruise",
   "key.valkyrienskies.ship_down": "Descend",
   "key.valkyrienskies.ship_up": "Ascend",
+  "key.valkyrienskies.ship_gpu_render": "Toggle Ship GPU Render",
 
   "block.valkyrienskies.test_chair": "Debug Chair",
   "block.valkyrienskies.test_hinge": "Debug Hinge",

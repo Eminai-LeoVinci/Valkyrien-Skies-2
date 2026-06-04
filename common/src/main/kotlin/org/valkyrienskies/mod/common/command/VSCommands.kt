@@ -25,6 +25,7 @@ import org.valkyrienskies.mod.common.command.commands.ScaleCommand
 import org.valkyrienskies.mod.common.command.commands.SplittingCommand
 import org.valkyrienskies.mod.common.command.commands.SpawnShipCubeCommand
 import org.valkyrienskies.mod.common.command.commands.StaticCommand
+import org.valkyrienskies.mod.common.command.commands.KeepActiveCommand
 import org.valkyrienskies.mod.common.command.commands.TeleportCommand
 import org.valkyrienskies.mod.common.shipObjectWorld
 import org.valkyrienskies.mod.mixin.feature.commands.ClientSuggestionProviderAccessor
@@ -49,6 +50,7 @@ object VSCommands {
         SplittingCommand.register(vs)
         SpawnShipCubeCommand.register(vs)
         StaticCommand.register(vs)
+        KeepActiveCommand.register(vs)
         TeleportCommand.register(vs)
 
         dispatcher.register(vs)

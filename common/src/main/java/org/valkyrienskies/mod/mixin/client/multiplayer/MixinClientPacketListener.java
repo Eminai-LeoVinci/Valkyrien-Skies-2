@@ -59,6 +59,8 @@ public class MixinClientPacketListener {
             entity.setId(i);
             entity.setUUID(packet.getUUID());
             this.level.addEntity(entity);
+            org.valkyrienskies.mod.common.util.PoseDebug.change(
+                "clientSeat", "id=" + i + " class=" + entity.getClass().getName());
         }
     }
 

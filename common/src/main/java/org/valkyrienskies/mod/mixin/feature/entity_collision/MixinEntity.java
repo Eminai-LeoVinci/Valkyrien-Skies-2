@@ -2,6 +2,7 @@ package org.valkyrienskies.mod.mixin.feature.entity_collision;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
@@ -18,6 +19,7 @@ import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.primitives.AABBd;
 import org.joml.primitives.AABBdc;
+import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -62,6 +64,12 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
         )
     )
     public Vec3 collideWithShips(final Entity entity, Vec3 movement, final Operation<Vec3> collide) {
+        // Guard against runaway/corrupt collision sweeps before they reach the block-collision
+        // sweeper. See vs$sanitizeCollisionMovement: a huge or non-finite movement vector makes
+        // the sweeper walk an unbounded number of chunk columns, and in shipyard space each column
+        // lazily allocates an empty chunk -- that is the multi-second client freeze.
+        movement = vs$sanitizeCollisionMovement(entity, movement);
+
         final AABB box = this.getBoundingBox();
         final Vec3 requestedMovement = movement;
         movement = EntityShipCollisionUtils.INSTANCE
@@ -94,6 +102,50 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
     private Vec3 vs$lastMoveRequestedMovement = Vec3.ZERO;
     @Unique
     private Vec3 vs$lastMoveAdjustedMovement = Vec3.ZERO;
+
+    @Unique
+    private static final double VS_MAX_SANE_COLLISION_MOVE = 256.0;
+    @Unique
+    private static final Logger VS_LOGGER = LogUtils.getLogger();
+    @Unique
+    private static volatile boolean vs$warnedRunawayMove = false;
+
+    /**
+     * Defensive clamp for the movement vector fed to {@code Entity.collide}. A non-finite or
+     * absurdly large movement makes the vanilla/Lithium block-collision sweeper iterate every
+     * chunk column the swept AABB touches. In VS2 shipyard space {@code getChunk} lazily allocates
+     * an empty {@code LevelChunk} per column (see
+     * {@code MixinClientChunkCache#getOrCreateEmptyChunk}), so a single corrupt move can spawn
+     * millions of chunk objects and hang the render thread for tens of seconds (the client ticks
+     * entities on the render thread).
+     *
+     * <p>The trigger observed in the wild is a firework rocket stranded client-side in the
+     * shipyard: the server never removes it, so the client keeps applying its 1.15x/tick speed-up
+     * until {@code deltaMovement} explodes. When we detect that, we stop the entity dead for this
+     * move and zero its velocity so it cannot immediately re-explode next tick; the sweep then
+     * covers only the entity's own bounding box (one chunk). The threshold (256 blocks/tick) is
+     * ~25x faster than anything legitimate gameplay produces, so this never fires for normal
+     * entities.
+     */
+    @Unique
+    private Vec3 vs$sanitizeCollisionMovement(final Entity entity, final Vec3 movement) {
+        final boolean finite =
+            Double.isFinite(movement.x) && Double.isFinite(movement.y) && Double.isFinite(movement.z);
+        if (finite && movement.lengthSqr() <= VS_MAX_SANE_COLLISION_MOVE * VS_MAX_SANE_COLLISION_MOVE) {
+            return movement;
+        }
+        // Runaway/corrupt movement: halt it and kill the velocity driving it so the swept AABB
+        // collapses to the entity's own box instead of spanning the shipyard.
+        entity.setDeltaMovement(Vec3.ZERO);
+        if (!vs$warnedRunawayMove) {
+            vs$warnedRunawayMove = true;
+            VS_LOGGER.warn(
+                "VS2: clamped a runaway entity collision movement ({}) to prevent a shipyard "
+                    + "chunk-allocation freeze; entity={} pos=({}, {}, {})",
+                movement, entity.getType(), entity.getX(), entity.getY(), entity.getZ());
+        }
+        return Vec3.ZERO;
+    }
 
     /**
      * 2.4.84 / 2.4.86: Re-port of upstream PR #1712 — non-axis-aligned collision velocity response.

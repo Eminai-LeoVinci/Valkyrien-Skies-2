@@ -24,6 +24,23 @@ object VSTicketType {
     )
 
     /**
+     * Ticket for the WORLD-space chunks under an "active" ship (see [org.valkyrienskies.mod.common.util.ShipSettings.keepActive]).
+     *
+     * Used by [ShipActivationManager] with radius 1 (level 32 = BLOCK_TICKING) on the real-world
+     * chunks the ship currently overlaps. Unlike [SHIP_CHUNK] these are NOT shipyard chunks, so
+     * vanilla applies normally: level 32 makes the footprint report isPositionTicking, which fixes
+     * the off-centre-helm freeze (the ship's centre chunk staying ticking even when the pilot sits
+     * far from it). NOTE: this does NOT make a far, player-less ship keep moving — vs-core gates ship
+     * physics on player proximity (its own player set), not on chunk-ticking level, so raising the
+     * radius to entity-ticking changed nothing at range. Non-persisted (a plain ticket, not vanilla
+     * /forceload), so it never leaks across restarts; the manager releases stale chunks each tick.
+     */
+    @JvmField
+    val SHIP_ACTIVE_WORLD: TicketType = TicketType.register(
+        "vs_ship_active_world", TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING or TicketType.FLAG_SIMULATION
+    )
+
+    /**
      * Forces this object's class-init so [SHIP_CHUNK] is registered.
      *
      * 1.21.11: TicketType.register writes to BuiltInRegistries.TICKET_TYPE, which freezes

@@ -17,6 +17,8 @@
   "client": [
     "compat.connectiblechains.client.MixinChainKnotEntityRenderer",
     "compat.emf.MixinEMFAnimationEntityContext",
+    "compat.emf.MixinEMFStandAtHelm",
+    "compat.shouldersurfing.MixinSSRPerspectiveCycle",
     "compat.sodium.MixinRenderSectionManager"
   ],
   "injectors": {

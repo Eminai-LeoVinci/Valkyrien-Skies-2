@@ -1,8 +1,8 @@
 package org.valkyrienskies.mod.fabric.mixin.compat.sodium;
 
-import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.textures.GpuSampler;
 import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.caffeinemc.mods.sodium.client.gl.device.RenderDevice;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderMatrices;
 import net.caffeinemc.mods.sodium.client.render.chunk.ChunkRenderer;
 import net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager;
@@ -32,16 +32,32 @@ public class MixinRenderSectionManager {
     @Final
     private SortBehavior sortBehavior;
 
-    @Inject(at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/gl/device/CommandList;flush()V"),
-        method = "renderLayer")
+    // FIX (chunk see-through holes, shaders only): the bisection proved THIS per-frame ship draw
+    // corrupts streaming terrain, and ONLY under Iris. It is NOT a GPU race (forcing glFinish before
+    // the ship draw did nothing) and NOT leftover transform state (a post-draw state reset did
+    // nothing). What remains: terrain used to draw FIRST, then the ship drew into the same Iris
+    // terrain pass -- and the ship draw disturbs the terrain Iris has already written to its
+    // G-buffer, so those sections later read as sky (the holes).
+    //
+    // Fix: draw ships at the HEAD of renderLayer, BEFORE Sodium's own terrain render runs. Terrain
+    // is then the last thing written to the G-buffer each pass, so nothing the ship draw does can
+    // corrupt it. Depth testing keeps opaque geometry correct regardless of draw order. We fetch the
+    // immediate command list the same way Sodium's renderLayer does (RenderDevice.INSTANCE).
+    @Inject(method = "renderLayer", at = @At("HEAD"))
     private void redirectRenderLayer(final ChunkRenderMatrices matrices, final TerrainRenderPass pass,
         final double camX, final double camY, final double camZ, final FogParameters fogParameters,
-        final GpuSampler gpuSampler, final CallbackInfo ci, @Local final CommandList commandList) {
+        final GpuSampler gpuSampler, final CallbackInfo ci) {
 
+        final var shipRenderLists = ((RenderSectionManagerDuck) this).vs_getShipRenderLists();
+        if (shipRenderLists.isEmpty()) {
+            return;
+        }
+
+        final CommandList commandList = RenderDevice.INSTANCE.createCommandList();
         // Sodium's renderLayer passes (sortBehavior != OFF) as render()'s translucency-sort flag — mirror it.
         final boolean sortTranslucent = sortBehavior != SortBehavior.OFF;
 
-        ((RenderSectionManagerDuck) this).vs_getShipRenderLists().forEach((ship, renderList) -> {
+        shipRenderLists.forEach((ship, renderList) -> {
             final Matrix4f newModelView = new Matrix4f(matrices.modelView());
             final Vector3dc center = ship.getRenderTransform().getPositionInShip();
             VSClientGameUtils.transformRenderWithShip(ship.getRenderTransform(), newModelView, center.x(), center.y(),

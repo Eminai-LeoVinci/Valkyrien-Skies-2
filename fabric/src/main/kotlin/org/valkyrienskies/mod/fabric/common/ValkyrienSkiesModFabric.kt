@@ -2,6 +2,7 @@ package org.valkyrienskies.mod.fabric.common
 
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 import net.fabricmc.fabric.api.command.v2.ArgumentTypeRegistry
@@ -15,6 +16,7 @@ import net.minecraft.commands.synchronization.SingletonArgumentInfo
 import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.registries.Registries
+import net.minecraft.network.chat.Component
 import net.minecraft.resources.Identifier
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.packs.PackType.SERVER_DATA
@@ -43,12 +45,14 @@ import org.valkyrienskies.mod.common.command.arguments.ShipArgument
 import org.valkyrienskies.mod.common.command.arguments.ShipArgumentInfo
 import org.valkyrienskies.mod.common.config.MassDatapackResolver
 import org.valkyrienskies.mod.common.config.VSEntityHandlerDataLoader
+import org.valkyrienskies.mod.common.config.VSClientConfigLoader
 import org.valkyrienskies.mod.common.config.VSGameConfig
 import org.valkyrienskies.mod.common.config.VSKeyBindings
 import org.valkyrienskies.mod.common.entity.ShipMountingEntity
 import org.valkyrienskies.mod.common.hooks.VSGameEvents
 import org.valkyrienskies.mod.common.item.ShipAssemblerItem
 import org.valkyrienskies.mod.common.item.ShipCreatorItem
+import org.valkyrienskies.mod.common.render.ShipTerrainMeshCache
 import org.valkyrienskies.mod.common.world.VSTicketType
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
@@ -101,7 +105,11 @@ class ValkyrienSkiesModFabric : ModInitializer {
         VSTicketType.init()
 
         val isClient = FabricLoader.getInstance().environmentType == EnvType.CLIENT
-        if (isClient) onInitializeClient()
+        if (isClient) {
+            // Load client render settings (config/valkyrienskies_client.json) -- e.g. ship render distance.
+            VSClientConfigLoader.loadOrCreate()
+            onInitializeClient()
+        }
 
         ValkyrienSkiesMod.init()
 
@@ -240,6 +248,25 @@ class ValkyrienSkiesModFabric : ModInitializer {
         }
         VSKeyBindings.clientSetup {
             KeyBindingHelper.registerKeyBinding(it)
+        }
+
+        // Edge-triggered toggle for the ship-terrain GPU render path. Unbound by default, so this
+        // consumeClick() never fires until the player binds the key in Controls.
+        ClientTickEvents.END_CLIENT_TICK.register { client ->
+            while (VSKeyBindings.shipGpuRender.get().consumeClick()) {
+                ShipTerrainMeshCache.toggleGpuPath()
+                val state = if (ShipTerrainMeshCache.isGpuPath()) {
+                    // The GPU path can't render through a shaderpack; it transparently uses the
+                    // immediate path while shaders are on (no FPS loss -- the frame is GPU-bound there).
+                    if (ShipTerrainMeshCache.isShadersForcingImmediate()) "ON (immediate: shaders on)" else "ON"
+                } else {
+                    "OFF"
+                }
+                client.gui.setOverlayMessage(
+                    Component.literal("VS ship GPU render: $state"),
+                    false
+                )
+            }
         }
     }
 

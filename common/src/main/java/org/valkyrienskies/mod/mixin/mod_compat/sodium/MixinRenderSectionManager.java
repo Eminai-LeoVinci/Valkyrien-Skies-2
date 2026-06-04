@@ -67,15 +67,48 @@ public abstract class MixinRenderSectionManager implements RenderSectionManagerD
     @Shadow
     public abstract void tickVisibleRenders();
 
+    // Ship<->Sodium terrain integration is DISABLED. Drawing ship sections through Sodium's chunk
+    // renderer is fundamentally incompatible with Iris: Iris keeps parallel camera/shadow render
+    // lists and swaps RenderSectionManager.renderLists between them per pass, while this integration
+    // swaps/merges the same fields for ships -- the two collide and punch see-through holes in
+    // streaming terrain (shaders only). Ship terrain blocks are instead rendered immediate-mode
+    // through MC's normal geometry path (MixinLevelRenderer, submitBlockEntities TAIL), which Iris's
+    // gbuffers handle correctly. With this true, afterIterateChunks early-returns, shipRenderLists
+    // stays empty, and every Sodium ship-render path (the Fabric redirectRenderLayer, the tick and
+    // block-entity swaps) is inert.
+    @Unique
+    private static final boolean VS_DISABLE_SHIP_TERRAIN_INTEGRATION = true;
+
     @Inject(at = @At("TAIL"), method = "createTerrainRenderList")
     private void afterIterateChunks(final Camera camera, final Viewport viewport, final FogParameters fogParameters,
         final int frame, final boolean spectator, final CallbackInfoReturnable<Boolean> cir) {
 
+        if (VS_DISABLE_SHIP_TERRAIN_INTEGRATION) {
+            return;
+        }
+
         for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(Minecraft.getInstance()).getLoadedShips()) {
             // 0.8 replaced VisibleChunkCollector with SectionCollector. We visit ship sections directly
-            // instead of walking the cull graph, so ZERO_FRAME_DEFER just makes ship rebuilds prompt.
+            // instead of walking the cull graph.
+            //
+            // Queue type matters a LOT here. ZERO_FRAME_DEFER is Sodium's highest-priority rebuild
+            // queue: in RenderSectionManager.updateChunks -> submitSectionTasks it is drained FIRST,
+            // into the *blocking* collector that the render thread awaitCompletion()s, and it bypasses
+            // the per-frame upload budget. Ship sections get re-dirtied constantly while the player
+            // moves (Sodium recycles their RenderRegions as you fly), so on ZERO_FRAME those dirty
+            // ship builds preempt and block the SAME per-frame build+upload budget that streams in
+            // normal terrain. Visible result: terrain meshes land a beat late and the world flashes
+            // see-through / sky-backdrop for a fraction of a second whenever a ship is loaded and you
+            // move -- the reported bug. (It happens with a *stationary* ship too because it's the
+            // player's movement, not the ship's, that re-dirties the sections.)
+            //
+            // ALWAYS_DEFER routes ship rebuilds to the deferred, non-blocking queue: drained LAST,
+            // built only with budget left over after terrain, and never awaited on the render thread.
+            // Terrain streaming always wins the budget. Already-built ship sections keep rendering
+            // every frame via shipRenderLists; only a freshly-dirtied ship section waits a frame or
+            // two to re-mesh, which is imperceptible next to the terrain it no longer stalls.
             final OcclusionSectionCollector collector =
-                new OcclusionSectionCollector(frame, TaskQueueType.ZERO_FRAME_DEFER, TaskQueueType.ZERO_FRAME_DEFER);
+                new OcclusionSectionCollector(frame, TaskQueueType.ALWAYS_DEFER, TaskQueueType.ALWAYS_DEFER);
 
             ship.getActiveChunksSet().forEach((x, z) -> {
                 final LevelChunk levelChunk = level.getChunk(x, z);

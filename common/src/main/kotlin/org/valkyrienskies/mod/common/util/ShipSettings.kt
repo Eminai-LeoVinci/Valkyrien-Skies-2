@@ -18,7 +18,23 @@ data class ShipSettings(
     /**
      * If true this ship will change dimensions when it touches a portal
      */
-    var changeDimensionOnTouchPortals: Boolean = true
+    var changeDimensionOnTouchPortals: Boolean = true,
+
+    /**
+     * If true, VS2 keeps this ship's world-position chunks force-ticked every server tick, so the
+     * ship keeps simulating (physics, cruise/autopilot, machinery) even when no player is nearby —
+     * independent of the vanilla "Simulation Distance" video setting.
+     *
+     * Background: a VS2 ship only physics-ticks while its WORLD position sits in a ticking chunk
+     * (i.e. within a player's vanilla simulation distance). [shipLoadDistance] only force-loads the
+     * shipyard chunks, not the ship's world-position chunks, which is why raising it never kept an
+     * unattended ship moving. When this flag is set, [ShipActivationManager] follows the ship and
+     * force-ticks the chunks under it so simulation never pauses. Costs CPU only for flagged ships,
+     * so leave it off for parked ships and on for ones you want to keep flying unattended.
+     *
+     * Persisted per ship. Toggle in-game with `/vs set-keep-active <ships> <true|false>`.
+     */
+    var keepActive: Boolean = false
 )
 
 @OptIn(VsBeta::class)

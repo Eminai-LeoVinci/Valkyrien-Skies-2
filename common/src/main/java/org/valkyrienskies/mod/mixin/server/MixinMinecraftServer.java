@@ -52,6 +52,7 @@ import org.valkyrienskies.mod.common.util.EntityDragger;
 import org.valkyrienskies.mod.common.util.VSLevelChunk;
 import org.valkyrienskies.mod.common.util.VSServerLevel;
 import org.valkyrienskies.mod.common.world.ChunkManagement;
+import org.valkyrienskies.mod.common.world.ShipActivationManager;
 import org.valkyrienskies.mod.compat.LoadedMods;
 import org.valkyrienskies.mod.compat.Weather2Compat;
 import org.valkyrienskies.mod.util.KrunchSupport;
@@ -173,7 +174,14 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     )
     private void preTick(final CallbackInfo ci) {
         final Set<VsiPlayer> vsPlayers = playerList.getPlayers().stream()
-            .map(VSGameUtilsKt::getPlayerWrapper).collect(Collectors.toSet());
+            .map(VSGameUtilsKt::getPlayerWrapper).collect(Collectors.toCollection(HashSet::new));
+        // Pin a synthetic observer onto every "always active" ship so vs-core's player-proximity
+        // load/physics gate keeps it simulating with no real player nearby. vs-core gates ship
+        // physics on its player set + proximity, NOT on vanilla sim distance or chunk tickets, and
+        // its per-ship forceWatchingShips override is dead code in this build -- so making it think a
+        // player sits on the ship is the only lever. The observer feeds only that gate; nothing is
+        // networked to it (VSFabricNetworking.sendToClient drops non-MinecraftPlayer).
+        vsPlayers.addAll(ShipActivationManager.activeShipObservers(shipWorld));
         shipWorld.setPlayers(vsPlayers);
 
         // region Tell the VS world to load new levels, and unload deleted ones
@@ -223,6 +231,9 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     )
     private void preConnectionTick(final CallbackInfo ci) {
         ChunkManagement.tickChunkLoading(shipWorld, MinecraftServer.class.cast(this));
+        // Keep "active" ships (keepActive flag / cruising) simulating regardless of the vanilla
+        // simulation-distance setting by force-ticking the world chunks under them.
+        ShipActivationManager.tick(shipWorld, MinecraftServer.class.cast(this));
     }
 
     @Shadow
@@ -391,6 +402,9 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         // commit 076dd115afcf920a9db472527d8a41786b465863; MixinChunkMapClose is the
         // defense-in-depth safety net that assumes this ran.
         if (shipWorld != null) {
+            // Release any world-chunk tickets we placed for active ships (mirror of the SHIP_CHUNK
+            // cleanup below — clear before MC's shutdown chunk-drain loop runs).
+            ShipActivationManager.clearAll(MinecraftServer.class.cast(this));
             for (final LoadedServerShip ship : shipWorld.getLoadedShips()) {
                 final ServerLevel level = dimensionToLevelMap.get(ship.getChunkClaimDimension());
                 if (level != null) {

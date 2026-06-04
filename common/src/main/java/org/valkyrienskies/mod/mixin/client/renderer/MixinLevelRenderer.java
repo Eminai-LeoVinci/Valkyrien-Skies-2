@@ -36,6 +36,7 @@ import net.minecraft.client.renderer.state.CameraRenderState;
 import net.minecraft.client.renderer.state.LevelRenderState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -44,6 +45,7 @@ import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4dc;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector4f;
@@ -62,8 +64,10 @@ import org.valkyrienskies.mod.client.IVSCamera;
 import org.valkyrienskies.mod.client.TransformingVertexConsumer;
 import org.valkyrienskies.mod.common.VSClientGameUtils;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
+import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
 import org.valkyrienskies.mod.common.assembly.SeamlessChunksManager;
 import org.valkyrienskies.mod.common.entity.ShipMountedToData;
+import org.valkyrienskies.mod.common.render.ShipTerrainMeshCache;
 
 @Mixin(LevelRenderer.class)
 public abstract class MixinLevelRenderer {
@@ -99,6 +103,22 @@ public abstract class MixinLevelRenderer {
     @Unique
     private float valkyrienskies$partialTick = 1.0f;
 
+    // The main camera-pass frustum, captured during pass setup (addMainPass) so it is available when
+    // the pass execute lambda later calls submitBlockEntities, where we frustum-cull ship terrain.
+    @Unique
+    private Frustum valkyrienskies$mainPassFrustum = null;
+
+    // Throttle for the costly full section-occlusion rebuild we trigger while a mounted ship turns:
+    // coalesce it to at most once every few frames instead of (often) every frame during rotation.
+    @Unique
+    private static final long VS_OCCLUSION_INVALIDATE_MIN_GAP_FRAMES = 5L;
+    @Unique
+    private long valkyrienskies$frameCounter = 0L;
+    @Unique
+    private long valkyrienskies$lastOcclusionInvalidateFrame = Long.MIN_VALUE;
+    @Unique
+    private boolean valkyrienskies$occlusionRebuildPending = false;
+
     /**
      * @reason This mixin forces the game to always render block damage.
      */
@@ -115,6 +135,7 @@ public abstract class MixinLevelRenderer {
         boolean bl, Camera camera, Matrix4f matrix4f, Matrix4f matrix4f2, Matrix4f matrix4f3,
         GpuBufferSlice gpuBufferSlice, Vector4f vector4f, boolean bl2, CallbackInfo ci) {
         this.valkyrienskies$partialTick = deltaTracker.getGameTimeDeltaPartialTick(false);
+        this.valkyrienskies$frameCounter++;
         final ShipTransform shipMountedRenderTransform = ((IVSCamera) camera).getShipMountedRenderTransform();
         if (valkyrienskies$prevShipMountedToTransform != shipMountedRenderTransform) {
             if (valkyrienskies$prevShipMountedToTransform != null && shipMountedRenderTransform != null) {
@@ -124,12 +145,27 @@ public abstract class MixinLevelRenderer {
                 double angle = 2.0 * Math.acos(rotDot);
                 if (Math.toDegrees(angle) > 1.0) {
                     valkyrienskies$prevShipMountedToTransform = shipMountedRenderTransform;
-                    sectionOcclusionGraph.invalidate();
+                    // Don't rebuild the (whole-world) occlusion graph every frame the ship turns; mark
+                    // it pending and let the throttle below coalesce the rebuilds.
+                    valkyrienskies$occlusionRebuildPending = true;
                 }
             } else {
+                // Mounting or dismounting a ship changes visibility drastically and is rare -- rebuild now.
                 valkyrienskies$prevShipMountedToTransform = shipMountedRenderTransform;
+                valkyrienskies$occlusionRebuildPending = false;
+                valkyrienskies$lastOcclusionInvalidateFrame = valkyrienskies$frameCounter;
                 sectionOcclusionGraph.invalidate();
             }
+        }
+        // Throttled flush of pending rotation rebuilds: at most one full invalidate every few frames.
+        // Each invalidate is a full rebuild reflecting the current camera, so coalescing only makes the
+        // occlusion set up to a few frames stale -- imperceptible, but it avoids a per-frame full BFS.
+        if (valkyrienskies$occlusionRebuildPending
+            && valkyrienskies$frameCounter - valkyrienskies$lastOcclusionInvalidateFrame
+                >= VS_OCCLUSION_INVALIDATE_MIN_GAP_FRAMES) {
+            valkyrienskies$occlusionRebuildPending = false;
+            valkyrienskies$lastOcclusionInvalidateFrame = valkyrienskies$frameCounter;
+            sectionOcclusionGraph.invalidate();
         }
     }
 
@@ -147,6 +183,17 @@ public abstract class MixinLevelRenderer {
         if (manager != null) {
             manager.drainDeferredBatch();
         }
+    }
+
+    // Capture the main-pass frustum so ship terrain can be frustum-culled in submitBlockEntities.
+    // addMainPass runs during frame-graph setup, before the pass execute lambda (which calls
+    // submitBlockEntities) runs, so the field is populated in time. World space; shared with no one.
+    @Inject(method = "addMainPass", at = @At("HEAD"), require = 1)
+    private void valkyrienskies$captureMainPassFrustum(final FrameGraphBuilder frameGraphBuilder,
+        final Frustum frustum, final Matrix4f matrix4f, final GpuBufferSlice gpuBufferSlice,
+        final boolean bl, final LevelRenderState levelRenderState, final DeltaTracker deltaTracker,
+        final ProfilerFiller profilerFiller, final CallbackInfo ci) {
+        this.valkyrienskies$mainPassFrustum = frustum;
     }
 
     // Ship blocks live in far-away shipyard chunks and must be re-drawn each frame at the ship's
@@ -318,15 +365,55 @@ public abstract class MixinLevelRenderer {
         }
         try {
             final CameraRenderState cameraRenderState = levelRenderState.cameraRenderState;
+            final Frustum frustum = this.valkyrienskies$mainPassFrustum;
             for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
+                // Skip a whole ship's block entities when the ship can't be on screen.
+                if (frustum != null && !frustum.isVisible(VectorConversionsMCKt.toMinecraft(ship.getRenderAABB()))) {
+                    continue;
+                }
                 final ShipTransform renderTransform = ship.getRenderTransform();
+                final Matrix4dc shipToWorld = renderTransform.getShipToWorld();
                 ship.getActiveChunksSet().forEach((chunkX, chunkZ) -> {
                     final LevelChunk chunk = clientLevel.getChunk(chunkX, chunkZ);
                     for (final BlockEntity blockEntity : chunk.getBlockEntities().values()) {
+                        final BlockPos bePos = blockEntity.getBlockPos();
+                        // Cull each BE by its section visibility (the same test the cached terrain uses),
+                        // so off-screen ship block entities aren't extracted + submitted every frame.
+                        if (!ShipTerrainMeshCache.INSTANCE.isShipSectionVisible(frustum, shipToWorld,
+                                bePos.getX() >> 4, bePos.getY() >> 4, bePos.getZ() >> 4)) {
+                            continue;
+                        }
                         valkyrienskies$submitShipBlockEntity(blockEntity, renderTransform, poseStack,
                             submitNodeStorage, cameraRenderState);
                     }
                 });
+            }
+
+            // Ship TERRAIN blocks. Two paths:
+            //  * Cached fast path (vanilla vertex format / no shaders): bake each ship section once
+            //    into reusable meshes and redraw them via RenderType.draw() with the ship transform
+            //    on the modelview stack. Avoids re-baking every block model (with ambient occlusion +
+            //    light sampling) every frame, which dropped large ships to single-digit FPS.
+            //  * Immediate fallback (shaders extend the vertex format, or the cache disabled itself):
+            //    the original per-frame bake into the main buffer source.
+            // Both draw at this execute-time point (gbuffer bound, right after opaque terrain) through
+            // MC's normal geometry path that Iris's gbuffers handle -- NOT Sodium's terrain
+            // render-lists, so the see-through holes can't return. Do NOT call endBatch(); the
+            // immediate path is flushed by vanilla's following renderAllFeatures()/endBatch().
+            final BlockRenderDispatcher dispatcher = this.minecraft.getBlockRenderer();
+            final RandomSource random = RandomSource.create();
+            final MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
+            final boolean useShipMeshCache = ShipTerrainMeshCache.INSTANCE.canUseCache();
+            if (useShipMeshCache) {
+                ShipTerrainMeshCache.INSTANCE.renderAll(clientLevel, dispatcher, random, bufferSource,
+                    this.valkyrienskies$mainPassFrustum,
+                    cameraRenderState.pos.x, cameraRenderState.pos.y, cameraRenderState.pos.z);
+            } else {
+                final PoseStack shipPoseStack = new PoseStack();
+                for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
+                    valkyrienskies$renderShip(ship, clientLevel, dispatcher, bufferSource, shipPoseStack, random,
+                        cameraRenderState.pos.x, cameraRenderState.pos.y, cameraRenderState.pos.z);
+                }
             }
         } catch (final Throwable t) {
             if (!this.valkyrienskies$loggedShipRenderError) {
@@ -334,6 +421,20 @@ public abstract class MixinLevelRenderer {
                 t.printStackTrace();
             }
         }
+    }
+
+    // Invalidate a ship section's cached mesh when its blocks change. We hook the PRIVATE
+    // setSectionDirty(IIIZ) funnel, not the public setSectionDirty(III): a block edit goes
+    // blockChanged -> setBlockDirty -> setSectionDirty(IIIZ) and never touches the public overload
+    // (that one is mainly called by light updates). Hooking the public overload meant a broken ship
+    // block only re-baked when a neighbour edit happened to trigger a relight -- the "doesn't
+    // disappear until I update a block around it" bug. The private overload catches every dirty path
+    // (public overload, setBlockDirty, neighbours) and fires after the new state is committed, so the
+    // re-bake reads fresh blocks. No-op for normal (non-ship) terrain -- the lookup misses cheaply.
+    @Inject(method = "setSectionDirty(IIIZ)V", at = @At("HEAD"), require = 1)
+    private void valkyrienskies$invalidateShipSectionMesh(final int x, final int y, final int z,
+        final boolean reRenderOnMainThread, final CallbackInfo ci) {
+        ShipTerrainMeshCache.INSTANCE.invalidateSection(x, y, z);
     }
 
     @Unique
@@ -415,9 +516,12 @@ public abstract class MixinLevelRenderer {
             return original.call(dispatcher, entity, frustum, d, e, f);
         }
         final Entity vehicle = entity.getVehicle();
+        // Every ShipMountingEntity rider renders standing. The old isAir(blockPosition()) probe
+        // mis-classified a half-slab-floored helm as seated (Eureka drops the seat onto the slab
+        // block) and skipped this bypass, so the pulled-back standing player got distance-culled
+        // and rendered invisible.
         if (vehicle == null
-            || !(vehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity)
-            || !vehicle.level().getBlockState(vehicle.blockPosition()).isAir()) {
+            || !(vehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity)) {
             return original.call(dispatcher, entity, frustum, d, e, f);
         }
         return frustum.isVisible(entity.getBoundingBox().inflate(0.5));
@@ -462,9 +566,8 @@ public abstract class MixinLevelRenderer {
         if (!(vehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity)) {
             return false;
         }
-        if (!vehicle.level().getBlockState(vehicle.blockPosition()).isAir()) {
-            return false;
-        }
+        // Every ShipMountingEntity rider renders standing; the old isAir(blockPosition()) probe
+        // mis-classified a half-slab-floored helm as seated and skipped this detached backstop.
         return true;
     }
 

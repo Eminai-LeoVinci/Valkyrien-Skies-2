@@ -1,7 +1,6 @@
 package org.valkyrienskies.mod.mixin.feature.walk_animation_ship;
 
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Player;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.primitives.AABBd;
@@ -67,7 +66,6 @@ public abstract class MixinLivingEntity {
     @Inject(method = "updateWalkAnimation", at = @At("HEAD"), cancellable = true)
     private void vs$shipRelativeWalkAnim(float f, CallbackInfo ci) {
         LivingEntity self = (LivingEntity) (Object) this;
-        boolean isPlayer = self instanceof Player;
 
         // Fast path: trust lastShipStoodOn if set (local player / server-side path).
         Ship ship = null;
@@ -108,11 +106,6 @@ public abstract class MixinLivingEntity {
                 vs$prevShipRelPos = null;
                 vs$prevShipRelId = null;
             }
-            if (isPlayer) {
-                System.err.println(String.format(
-                    "[VS2-WALK101] %s %s noShip f=%.4f -> vanilla",
-                    self.level().isClientSide() ? "C" : "S", self.getClass().getSimpleName(), f));
-            }
             return;
         }
 
@@ -127,13 +120,6 @@ public abstract class MixinLivingEntity {
         }
         vs$prevShipRelPos = currentShipRel;
         vs$prevShipRelId = shipId;
-
-        if (isPlayer) {
-            System.err.println(String.format(
-                "[VS2-WALK101] %s %s src=%s shipId=%d origF=%.4f shipRelDXZ=%.4f",
-                self.level().isClientSide() ? "C" : "S", self.getClass().getSimpleName(),
-                fromDragInfo ? "dragInfo" : "intersect", shipId, f, speedSignal));
-        }
 
         self.walkAnimation.update(Math.min(speedSignal * 4.0F, 1.0F), 0.4F, self.isBaby() ? 3.0F : 1.0F);
         ci.cancel();

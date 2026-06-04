@@ -9,11 +9,9 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
-import org.joml.primitives.AABBdc;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -26,6 +24,7 @@ import org.valkyrienskies.mod.client.IVSCamera;
 import org.valkyrienskies.mod.common.IShipObjectWorldClientProvider;
 import org.valkyrienskies.mod.common.entity.ShipMountedToData;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
+import org.valkyrienskies.mod.common.config.VSClientConfig;
 import org.valkyrienskies.mod.common.util.EntityDragger;
 import org.valkyrienskies.mod.common.util.EntityDraggingInformation;
 import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
@@ -226,8 +225,14 @@ public abstract class MixinGameRenderer {
         // and the original behavior preserves ship-rotation coupling in 1st person
         // (useful when the ship rolls/pitches under you).
         final Entity vehicle = localPlayer.getVehicle();
-        final boolean standing = vehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity
-            && vehicle.level().getBlockState(vehicle.blockPosition()).isAir();
+        // Every ShipMountingEntity rider renders standing at the wheel (MixinAvatarRenderer dropped
+        // this same isAir(blockPosition()) probe because it mis-read shipyard-space coords and
+        // regressed the rider to a seated pose). The probe also broke once Eureka's foot-leveling
+        // drops the seat onto a half-slab floor: blockPosition() then lands inside the slab, isAir
+        // returns false, and the rider was wrongly treated as seated -> forced ship camera + the
+        // distance-cull bypass below was skipped, so the player rendered invisible. Treat all helm
+        // riders as standing.
+        final boolean standing = vehicle instanceof org.valkyrienskies.mod.common.entity.ShipMountingEntity;
         final CameraType cameraType = this.minecraft.options.getCameraType();
 
         if (standing) {
@@ -264,28 +269,24 @@ public abstract class MixinGameRenderer {
 
     @ModifyReturnValue(method = "getDepthFar", at = @At("RETURN"))
     public float includeShipsIn(final float originalDepth) {
-        // 1.21.11 port / Iris: extending the far clip plane to the furthest loaded ship's
-        // AABB corner destabilizes the projection matrix and corrupts world terrain under
-        // shaders. Skip the extension while we confirm this is the cause.
-        if (true) {
-            return originalDepth;
+        // At render distance 5 the vanilla far plane is only ~320 blocks (renderDistanceChunks * 64),
+        // which clips distant ships AND their markers -- the real reason ships vanish far sooner than
+        // Voxy's LOD terrain (Voxy uses its own extended far plane).
+        //
+        // The ORIGINAL approach extended the far plane to the furthest loaded ship's AABB corner every
+        // frame; that per-frame jitter destabilized Iris's projection -> world-terrain corruption under
+        // shaders (why it was disabled in the 1.21.11 port). Instead use a FIXED minimum from config:
+        // stable frame-to-frame, so Iris sees a constant projection, while pushing the clip plane out
+        // far enough for distant ships. Configurable via config/valkyrienskies_client.json.
+        //
+        // CRITICAL: only extend when ships are actually loaded. A far plane pushed out to
+        // shipRenderDistance (2048 by default) makes distant-terrain LOD renderers (Voxy / Distant
+        // Horizons) draw EVERYTHING out to that range -- on a heavily explored world that's a massive
+        // overdraw that tanks FPS to single digits, with no ship and no shaders involved. With zero
+        // loaded ships there is nothing to keep visible past the vanilla plane, so leave it untouched.
+        if (VSGameUtilsKt.getShipObjectWorld(Minecraft.getInstance()).getLoadedShips().iterator().hasNext()) {
+            return Math.max(originalDepth, VSClientConfig.CLIENT.getShipRenderDistance());
         }
-        float maxDistance = originalDepth;
-        for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(Minecraft.getInstance()).getLoadedShips()) {
-            Vec3 cameraPos = this.mainCamera.position;
-            AABBdc shipAABB = ship.getRenderAABB();
-            // find the furthest distance from the camera to the ship AABB corners
-            double furthestDistanceSq = 0;
-            double dMinX = shipAABB.minX() - cameraPos.x();  
-            double dMaxX = shipAABB.maxX() - cameraPos.x();  
-            double dMinY = shipAABB.minY() - cameraPos.y();  
-            double dMaxY = shipAABB.maxY() - cameraPos.y();  
-            double dMinZ = shipAABB.minZ() - cameraPos.z();  
-            double dMaxZ = shipAABB.maxZ() - cameraPos.z();  
-            double furthestDist = Math.sqrt(Math.max(dMinX * dMinX, dMaxX * dMaxX) + Math.max(dMinY * dMinY, dMaxY * dMaxY) + Math.max(dMinZ * dMinZ, dMaxZ * dMaxZ));  
-            maxDistance = Math.max(maxDistance, (float) furthestDist);  
-        }
-
-        return maxDistance;
+        return originalDepth;
     }
 }

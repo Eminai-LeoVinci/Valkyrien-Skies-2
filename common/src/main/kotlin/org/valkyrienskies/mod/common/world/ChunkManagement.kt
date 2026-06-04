@@ -19,6 +19,24 @@ import org.valkyrienskies.mod.mixin.accessors.server.level.ChunkMapAccessor
 import org.valkyrienskies.mod.util.logger
 
 object ChunkManagement {
+
+    /**
+     * When true, do NOT tell the client to drop a ship's shipyard chunks when the player moves out of
+     * vs-core's normal watch range (~350 blocks). The chunk stays loaded server-side anyway (the
+     * SHIP_CHUNK ticket is kept for alive ships, see the unwatch block below), so this just stops the
+     * client-side drop -- letting Sodium keep rendering the real ship at distance.
+     *
+     * Works together with the extended far clip-plane (MixinGameRenderer, driven by
+     * config/valkyrienskies_client.json `shipRenderDistance`): without the far-plane bump the kept
+     * chunks would just be clipped; without the keep the far-plane bump would have nothing to draw
+     * past ~350.
+     *
+     * NOTE: currently UNBOUNDED -- once a ship's chunks reach the client they stay until the ship is
+     * deleted or you change dimension. Fine for a handful of ships; a future refinement is to bound
+     * the keep to the configured render distance and drop a ship's chunks once you're past it.
+     */
+    private const val KEEP_SHIP_CHUNKS_ON_CLIENT = true
+
     @JvmStatic
     fun tickChunkLoading(shipWorld: VsiServerShipWorld, server: MinecraftServer) {
         val (chunkWatchTasks, chunkUnwatchTasks) = shipWorld.getChunkWatchTasks()
@@ -116,7 +134,7 @@ object ChunkManagement {
             // chunks never go through PlayerChunkSender, so dropChunk is a no-op for
             // tracking state. Clients already learn the ship went away via the
             // vs-core delete sync.
-            if (!shipDeleteUnwatch) {
+            if (!shipDeleteUnwatch && !KEEP_SHIP_CHUNKS_ON_CLIENT) {
                 for (player in chunkUnwatchTask.playersNeedUnwatching) {
                     if (player !is MinecraftPlayer) continue
                     val serverPlayer = player.mcPlayer as ServerPlayer

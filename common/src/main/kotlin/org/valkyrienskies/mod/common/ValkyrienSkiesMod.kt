@@ -123,15 +123,16 @@ object ValkyrienSkiesMod {
         // fly out of render range and don't "pause" when you look away.
         //
         // vs-core default is 128 blocks (8 chunks). The port previously raised it to
-        // 1024/1280 (64/80 chunks) so ships stayed visible at long render distances. Now
-        // bumped to 4096/4480 (256/280 chunks) so a ship in flight keeps moving even when
-        // it's well outside the player's view distance. Increase further if you want longer
-        // unattended flights; cost scales with ship-count × area, not world chunks.
+        // 1024/1280 (64/80 chunks) so ships stayed visible at long render distances, then
+        // 4096/4480 (256/280 chunks). Now 8192/8704 (512/544 chunks) so a ship in flight
+        // keeps moving even when it's well outside the player's view distance. Increase
+        // further if you want longer unattended flights; cost scales with ship-count × area
+        // (quadratic in distance), not world chunks. Keep unload > load for hysteresis.
         //
         // Set before VSConfigUpdater is class-loaded so these are the config-spec defaults;
         // the vs-core server TOML can still override them per-world without a rebuild.
-        VSCoreConfig.SERVER.shipLoadDistance = 4096.0
-        VSCoreConfig.SERVER.shipUnloadDistance = 4480.0
+        VSCoreConfig.SERVER.shipLoadDistance = 8192.0
+        VSCoreConfig.SERVER.shipUnloadDistance = 8704.0
 
         BlockStateInfo.init()
         VSGamePackets.register()
