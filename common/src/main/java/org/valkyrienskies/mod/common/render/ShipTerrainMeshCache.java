@@ -54,6 +54,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4dc;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
@@ -580,10 +581,11 @@ public final class ShipTerrainMeshCache {
             return true;
         }
         shipToWorld.transformAab(minX, minY, minZ, maxX, maxY, maxZ, cullMin, cullMax);
-        // Direct cubeInFrustum call (isVisible(AABB) is a plain pass-through to it) -- this runs
-        // once per non-air ship section per frame, so skip the per-test AABB allocation.
-        return ((FrustumInvoker) frustum).valkyrienskies$cubeInFrustum(
+        // Direct cubeInFrustum call -- this runs once per non-air ship section per frame, so skip
+        // the per-test AABB allocation. Same INSIDE/INTERSECT check as vanilla isVisible(AABB).
+        final int result = ((FrustumInvoker) frustum).valkyrienskies$cubeInFrustum(
             cullMin.x, cullMin.y, cullMin.z, cullMax.x, cullMax.y, cullMax.z);
+        return result == FrustumIntersection.INSIDE || result == FrustumIntersection.INTERSECT;
     }
 
     private static void emit(final VertexConsumer consumer, final PoseStack.Pose pose, final Built mesh) {
