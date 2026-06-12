@@ -205,7 +205,7 @@ object EntityDragger {
 
                     entityDraggingInformation.addedYawRotLastTick = addedYRot
                 }
-            } else if ((!entity.level().isClientSide || entity is LocalPlayer) && entityDraggingInformation.addedMovementLastTick.length() > 1e-3) {
+            } else if ((!entity.level().isClientSide || entity is LocalPlayer) && entityDraggingInformation.addedMovementLastTick.lengthSquared() > 1e-6) {
                 entity.push(entityDraggingInformation.addedMovementLastTick.x(),
                     entityDraggingInformation.addedMovementLastTick.y(),
                     entityDraggingInformation.addedMovementLastTick.z())

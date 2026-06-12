@@ -62,12 +62,18 @@ class ShipObserverPlayer(
     override fun equals(other: Any?): Boolean = other is ShipObserverPlayer && other.uuid == uuid
 
     companion object {
+        /** Memoizes [observerUuid]: nameUUIDFromBytes runs an MD5 per call, and observers are
+         *  recreated for every active ship every tick. One small entry per ship ever active. */
+        private val uuidCache = java.util.concurrent.ConcurrentHashMap<Pair<ShipId, Int>, UUID>()
+
         /**
          * Stable per-(ship,generation) UUID in a private namespace, so it never collides with a real
          * player's. [generation] lets the manager mint a fresh identity for a frozen ship to force a
          * vs-core watcher re-arrival (see the [generation] ctor param).
          */
         fun observerUuid(shipId: ShipId, generation: Int = 0): UUID =
-            UUID.nameUUIDFromBytes("valkyrienskies:ship-observer:$shipId:$generation".toByteArray())
+            uuidCache.getOrPut(shipId to generation) {
+                UUID.nameUUIDFromBytes("valkyrienskies:ship-observer:$shipId:$generation".toByteArray())
+            }
     }
 }

@@ -1,5 +1,7 @@
 package org.valkyrienskies.mod.common.world
 
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.level.ChunkPos
@@ -67,15 +69,15 @@ object ShipActivationManager {
      * never flipped it back (its own set still listed it) -> the chunk left the tick set -> a frozen
      * ship. That was the close-formation cruise stall. Refcount it -- force on 0->1, un-force on 1->0.
      */
-    private val worldForceRefs = HashMap<String, HashMap<Long, Int>>()
+    private val worldForceRefs = HashMap<String, Long2IntOpenHashMap>()
 
     private class ForcedEntry(val dimensionId: String) {
         /** Packed WORLD-position chunks we force-tick under the ship (vanilla updateChunkForced). */
-        val chunks = HashSet<Long>()
+        val chunks = LongOpenHashSet()
 
         /** Packed SHIPYARD (ship-block) chunks we pin loaded via SHIP_ACTIVE_VOXEL so the ship's
          *  voxels stay fully loaded and vs-core keeps stepping it (see VSTicketType.SHIP_ACTIVE_VOXEL). */
-        val voxelChunks = HashSet<Long>()
+        val voxelChunks = LongOpenHashSet()
 
         /** Whether this ship's activation is worth logging (keepActive/piloted/controlled, not the
          *  frequent walk-on/walk-off occupancy case). */
@@ -155,7 +157,7 @@ object ShipActivationManager {
 
             // QoL: a ship a player is standing on / inside / touching keeps simulating, so walking to the
             // far end of a big craft never freezes it. Checked only when no cheaper flag already applies.
-            val occupied = !manual && !piloted && !controlledNow && playersAboard(ship, level)
+            val occupied = !manual && !piloted && !controlledNow && playersAboardMemo(ship, level)
 
             if (!manual && !piloted && !controlledNow && !occupied) continue
             activeIds.add(ship.id)
@@ -166,7 +168,9 @@ object ShipActivationManager {
             entry.loggable = manual || piloted || controlledNow
 
             // Force-load+tick newly-overlapped world chunks (refcounted across ships -- see worldForceRefs).
-            for (packed in desired) {
+            val dIter = desired.iterator()
+            while (dIter.hasNext()) {
+                val packed = dIter.nextLong()
                 if (entry.chunks.add(packed)) {
                     forceWorldChunk(level, ship.chunkClaimDimension, packed)
                 }
@@ -174,8 +178,8 @@ object ShipActivationManager {
             // Un-force chunks the ship has moved off of (only truly un-forces when the LAST ship leaves).
             val iter = entry.chunks.iterator()
             while (iter.hasNext()) {
-                val packed = iter.next()
-                if (packed !in desired) {
+                val packed = iter.nextLong()
+                if (!desired.contains(packed)) {
                     unforceWorldChunk(level, entry.dimensionId, packed)
                     iter.remove()
                 }
@@ -183,17 +187,19 @@ object ShipActivationManager {
 
             // Pin EVERY one of the ship's active shipyard chunks loaded (SHIP_ACTIVE_VOXEL): an unloaded
             // active chunk flips areVoxelsFullyLoaded() false and excludes the whole ship from the step.
-            val desiredVoxel = HashSet<Long>()
+            val desiredVoxel = LongOpenHashSet()
             ship.activeChunksSet.iterateChunkPos { vcx, vcz -> desiredVoxel.add(ChunkPos.asLong(vcx, vcz)) }
-            for (packed in desiredVoxel) {
+            val dvIter = desiredVoxel.iterator()
+            while (dvIter.hasNext()) {
+                val packed = dvIter.nextLong()
                 if (entry.voxelChunks.add(packed)) {
                     level.chunkSource.addTicketWithRadius(VSTicketType.SHIP_ACTIVE_VOXEL, ChunkPos(packed), 0)
                 }
             }
             val vIter = entry.voxelChunks.iterator()
             while (vIter.hasNext()) {
-                val packed = vIter.next()
-                if (packed !in desiredVoxel) {
+                val packed = vIter.nextLong()
+                if (!desiredVoxel.contains(packed)) {
                     level.chunkSource.removeTicketWithRadius(VSTicketType.SHIP_ACTIVE_VOXEL, ChunkPos(packed), 0)
                     vIter.remove()
                 }
@@ -222,11 +228,13 @@ object ShipActivationManager {
     private fun release(id: Long, server: MinecraftServer) {
         val entry = forced.remove(id) ?: return
         val level = server.getLevelFromDimensionId(entry.dimensionId) ?: return
-        for (packed in entry.chunks) {
-            unforceWorldChunk(level, entry.dimensionId, packed)
+        val cIter = entry.chunks.iterator()
+        while (cIter.hasNext()) {
+            unforceWorldChunk(level, entry.dimensionId, cIter.nextLong())
         }
-        for (packed in entry.voxelChunks) {
-            level.chunkSource.removeTicketWithRadius(VSTicketType.SHIP_ACTIVE_VOXEL, ChunkPos(packed), 0)
+        val vIter = entry.voxelChunks.iterator()
+        while (vIter.hasNext()) {
+            level.chunkSource.removeTicketWithRadius(VSTicketType.SHIP_ACTIVE_VOXEL, ChunkPos(vIter.nextLong()), 0)
         }
     }
 
@@ -239,26 +247,28 @@ object ShipActivationManager {
         worldForceRefs.clear()
         controlledHeartbeat.clear()
         keepActiveCache.clear()
+        aboardMemo.clear()
+        aboardMemoTick = Long.MIN_VALUE
     }
 
     /** Force-load one WORLD chunk for a ship, refcounted across all active ships (see [worldForceRefs]). */
     private fun forceWorldChunk(level: ServerLevel, dim: String, packed: Long) {
-        val m = worldForceRefs.getOrPut(dim) { HashMap() }
-        val n = m.getOrDefault(packed, 0)
+        val m = worldForceRefs.getOrPut(dim) { Long2IntOpenHashMap() }
+        val n = m.get(packed)
         if (n == 0) level.chunkSource.updateChunkForced(ChunkPos(packed), true)
-        m[packed] = n + 1
+        m.put(packed, n + 1)
     }
 
     /** Drop one ship's hold on a WORLD chunk; only un-forces it once the LAST holder leaves. */
     private fun unforceWorldChunk(level: ServerLevel, dim: String, packed: Long) {
         val m = worldForceRefs[dim] ?: return
-        val n = m.getOrDefault(packed, 0)
+        val n = m.get(packed)
         if (n <= 1) {
             m.remove(packed)
             if (m.isEmpty()) worldForceRefs.remove(dim)
             level.chunkSource.updateChunkForced(ChunkPos(packed), false)
         } else {
-            m[packed] = n - 1
+            m.put(packed, n - 1)
         }
     }
 
@@ -266,13 +276,13 @@ object ShipActivationManager {
      * Packed-long ChunkPos set covering the ship's current world AABB, padded by one chunk so the
      * leading edge of a moving ship is loaded before it arrives.
      */
-    private fun worldChunksUnder(ship: LoadedServerShip): Set<Long> {
+    private fun worldChunksUnder(ship: LoadedServerShip): LongOpenHashSet {
         val aabb = ship.worldAABB
         val minCX = (floor(aabb.minX()).toInt() shr 4) - 1
         val maxCX = (floor(aabb.maxX()).toInt() shr 4) + 1
         val minCZ = (floor(aabb.minZ()).toInt() shr 4) - 1
         val maxCZ = (floor(aabb.maxZ()).toInt() shr 4) + 1
-        val out = HashSet<Long>()
+        val out = LongOpenHashSet()
         var cx = minCX
         while (cx <= maxCX) {
             var cz = minCZ
@@ -283,6 +293,25 @@ object ShipActivationManager {
             cx++
         }
         return out
+    }
+
+    /**
+     * Per-tick memo for [playersAboard]: both [activeShipObservers] (tickServer HEAD, before the
+     * tickCount increment) and [tick] (tickChildren, after it) ask the same question about the
+     * same ships, so only one of the two scans actually computes per tickCount value. The
+     * observer scan may therefore see answers up to one tick stale -- harmless, because the
+     * chunk-forcing pass in [tick] always computes fresh for the boundary cases. Server-thread only.
+     */
+    private var aboardMemoTick = Long.MIN_VALUE
+    private val aboardMemo = HashMap<Long, Boolean>()
+
+    private fun playersAboardMemo(ship: LoadedServerShip, level: ServerLevel): Boolean {
+        val tick = level.server.tickCount.toLong()
+        if (tick != aboardMemoTick) {
+            aboardMemo.clear()
+            aboardMemoTick = tick
+        }
+        return aboardMemo.getOrPut(ship.id) { playersAboard(ship, level) }
     }
 
     /**
@@ -326,7 +355,7 @@ object ShipActivationManager {
             var occupied = false
             if (!keepActive && !piloted) {
                 val level = server.getLevelFromDimensionId(ship.chunkClaimDimension)
-                occupied = level != null && playersAboard(ship, level)
+                occupied = level != null && playersAboardMemo(ship, level)
             }
             if (!keepActive && !piloted && !occupied) continue
             val aabb = ship.worldAABB

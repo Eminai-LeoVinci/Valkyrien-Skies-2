@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import kotlin.Unit;
 import com.mojang.serialization.Codec;
 import net.minecraft.core.Direction;
@@ -15,6 +14,7 @@ import net.minecraft.util.BlockUtil;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.entity.EntityDimensions;
@@ -173,8 +173,10 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         at = @At("HEAD")
     )
     private void preTick(final CallbackInfo ci) {
-        final Set<VsiPlayer> vsPlayers = playerList.getPlayers().stream()
-            .map(VSGameUtilsKt::getPlayerWrapper).collect(Collectors.toCollection(HashSet::new));
+        final Set<VsiPlayer> vsPlayers = new HashSet<>();
+        for (final ServerPlayer player : playerList.getPlayers()) {
+            vsPlayers.add(VSGameUtilsKt.getPlayerWrapper(player));
+        }
         // Pin a synthetic observer (at the ship centre, distance 0) onto every "active" ship --
         // keepActive, piloted, or one a player is aboard -- so vs-core's player-proximity load/physics
         // gate keeps it simulating: with no real player nearby (keepActive), and from the centre even
@@ -187,20 +189,22 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         shipWorld.setPlayers(vsPlayers);
 
         // region Tell the VS world to load new levels, and unload deleted ones
-        final Map<String, ServerLevel> newLoadedLevels = new HashMap<>();
+        final Set<String> newLoadedLevels = new HashSet<>();
         for (final ServerLevel level : getAllLevels()) {
             final String dimensionId = VSGameUtilsKt.getDimensionId(level);
-            newLoadedLevels.put(dimensionId, level);
+            newLoadedLevels.add(dimensionId);
             dimensionToLevelMap.put(dimensionId, level);
         }
 
-        for (final String oldLoadedLevelId : loadedLevels) {
-            if (!newLoadedLevels.containsKey(oldLoadedLevelId)) {
-                shipWorld.removeDimension(oldLoadedLevelId);
-                dimensionToLevelMap.remove(oldLoadedLevelId);
+        if (!newLoadedLevels.equals(loadedLevels)) {
+            for (final String oldLoadedLevelId : loadedLevels) {
+                if (!newLoadedLevels.contains(oldLoadedLevelId)) {
+                    shipWorld.removeDimension(oldLoadedLevelId);
+                    dimensionToLevelMap.remove(oldLoadedLevelId);
+                }
             }
         }
-        loadedLevels = newLoadedLevels.keySet();
+        loadedLevels = newLoadedLevels;
         // endregion
 
         vsPipeline.preTickGame();
@@ -239,9 +243,13 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     )
     private void postTick(final CallbackInfo ci) {
         vsPipeline.postTickGame();
-        // Only drag entities after we have updated the ship positions
+        // Only drag entities after we have updated the ship positions. The drag sweep visits
+        // every entity in every dimension, so skip it entirely when the world has no ships.
+        final boolean anyShips = shipWorld != null && shipWorld.getAllShips().size() > 0;
         for (final ServerLevel level : getAllLevels()) {
-            EntityDragger.INSTANCE.dragEntitiesWithShips(level.getAllEntities(), false);
+            if (anyShips) {
+                EntityDragger.INSTANCE.dragEntitiesWithShips(level.getAllEntities(), false);
+            }
             if (LoadedMods.getWeather2())
                 Weather2Compat.INSTANCE.tick(level);
         }

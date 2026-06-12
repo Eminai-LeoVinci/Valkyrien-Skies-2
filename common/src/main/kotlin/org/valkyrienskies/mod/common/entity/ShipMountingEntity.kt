@@ -46,7 +46,8 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
             return
         }
 
-        if (level().getLoadedShipManagingPos(blockPosition()) != null)
+        // sendDrivingPacket only does anything client-side; don't pay the ship lookup on the server
+        if (lvl.isClientSide && level().getLoadedShipManagingPos(blockPosition()) != null)
             sendDrivingPacket()
     }
 
@@ -106,6 +107,11 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
 
     private fun sendDrivingPacket() {
         if (!level().isClientSide) return
+
+        // Only the seated LOCAL player should report driving input. Every client in render
+        // distance ticks this seat entity too, and without this gate each of them would send
+        // its own (server-ignored) PacketPlayerDriving every tick for every visible seat.
+        if (Minecraft.getInstance().player?.vehicle !== this) return
 
         // Read movement intent from the local player's ClientInput rather than the
         // W/A/S/D KeyMappings directly. Controlify's joystick mode (and other controller

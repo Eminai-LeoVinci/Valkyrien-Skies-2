@@ -67,6 +67,16 @@ public abstract class MixinLivingEntity {
     private void vs$shipRelativeWalkAnim(float f, CallbackInfo ci) {
         LivingEntity self = (LivingEntity) (Object) this;
 
+        // Runs for every LivingEntity every tick: bail to vanilla before any per-entity work
+        // (AABB allocation + intersection query below) when the world has no ships at all.
+        if (VSGameUtilsKt.getShipObjectWorld(self.level()).getAllShips().size() == 0) {
+            if (vs$prevShipRelPos != null) {
+                vs$prevShipRelPos = null;
+                vs$prevShipRelId = null;
+            }
+            return;
+        }
+
         // Fast path: trust lastShipStoodOn if set (local player / server-side path).
         Ship ship = null;
         Long shipId = null;
