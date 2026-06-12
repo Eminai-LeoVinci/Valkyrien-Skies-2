@@ -22,13 +22,26 @@ import org.valkyrienskies.mod.common.config.VSGameConfig
  * pitch and roll as the ship straddles a wave.
  *
  * Registered on every ship beside [BuoyancyHandlerAttachment]; no-op unless enabled in config and
- * the ship is actually in liquid. Defensive: any error disables the feature instead of crashing the
- * physics thread.
+ * the ship is actually in liquid. Defensive: any error disables wave buoyancy for that ship only,
+ * instead of crashing the physics thread.
  */
 class WaveBuoyancyAttachment : ShipPhysicsListener {
 
     @JsonIgnore
     internal var ship: LoadedServerShip? = null
+
+    /** Set after an error to keep THIS ship's wave forces off without crashing the physics thread. */
+    @JsonIgnore
+    private var disabled = false
+
+    // Scratch vectors reused across the sample grid. Safe for the position argument because
+    // vs-core's PhysShipImpl.applyWorldForceToModelPos copies it (new Vector3d(pos).sub(...));
+    // the FORCE vector is queued by reference (invPosForces.add) and must stay a fresh allocation.
+    @JsonIgnore
+    private val scratchModelPos = Vector3d()
+
+    @JsonIgnore
+    private val scratchWorldPos = Vector3d()
 
     override fun physTick(physShip: PhysShip, physLevel: PhysLevel) {
         if (disabled) return
@@ -68,8 +81,8 @@ class WaveBuoyancyAttachment : ShipPhysicsListener {
                     val mx = minX + (maxX - minX) * fx
                     val mz = minZ + (maxZ - minZ) * fz
 
-                    val modelPos = Vector3d(mx, midY, mz)
-                    val worldPos = shipToWorld.transformPosition(Vector3d(modelPos))
+                    val modelPos = scratchModelPos.set(mx, midY, mz)
+                    val worldPos = shipToWorld.transformPosition(mx, midY, mz, scratchWorldPos)
 
                     // Wave deviation from mean sea level at this point's world XZ.
                     val deviation = OceanWaveField.height(worldPos.x, worldPos.z)
@@ -87,14 +100,11 @@ class WaveBuoyancyAttachment : ShipPhysicsListener {
             }
         } catch (t: Throwable) {
             disabled = true
-            LOGGER.error("[vs wave-buoyancy] disabled after error in physTick", t)
+            LOGGER.error("[vs wave-buoyancy] disabled for ship ${ship.id} after error in physTick", t)
         }
     }
 
     companion object {
-        @Volatile
-        private var disabled = false
-
         private val LOGGER = org.slf4j.LoggerFactory.getLogger("vs-wave-buoyancy")
     }
 }

@@ -179,7 +179,9 @@ object ValkyrienSkiesMod {
         }
 
         core.physTickEvent.on { event ->
-            OceanWaveField.advanceTime(event.delta.toDouble())
+            // this event fires once per physics dimension; advanceTime gates on a driver
+            // dimension internally so the wave clock advances once per frame, not once per dim
+            OceanWaveField.advanceTime(event.world.dimension, event.delta.toDouble())
             dimensionalGTPAs.forEach { dimensionId, gameTickForceApplier ->
                 if (event.world.dimension == dimensionId) {
                     gameTickForceApplier.physTick(event.world, event.delta)
