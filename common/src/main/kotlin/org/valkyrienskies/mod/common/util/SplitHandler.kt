@@ -53,7 +53,7 @@ class SplitHandler(private val doEdges: Boolean, private val doCorners: Boolean)
         if (level is ServerLevel) {
             val loadedShip : LoadedServerShip? = level.shipObjectWorld.loadedShips.getById(shipId)
             if ((loadedShip != null && loadedShip.getAttachment<SplittingDisablerAttachment>()?.canSplit() != false) || (loadedShip == null && VSGameConfig.SERVER.enableWorldSplitting)) {
-                if (true) {
+                run {
 
                     val blockNeighbors = HashSet(level.shipObjectWorld.getAllSolidComponentsFromClaim(loadedShip?.chunkClaimDimension ?: return, loadedShip?.chunkClaim ?: return))
 

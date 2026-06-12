@@ -1,7 +1,5 @@
 package org.valkyrienskies.mod.common
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponentType
@@ -35,10 +33,6 @@ import org.valkyrienskies.mod.common.blockentity.TestAntigravBlockEntity
 import org.valkyrienskies.mod.common.blockentity.TestHingeBlockEntity
 import org.valkyrienskies.mod.common.blockentity.TestThrusterBlockEntity
 import org.valkyrienskies.mod.common.entity.ShipMountingEntity
-import org.valkyrienskies.mod.common.jackson.BlockPosDeserializer
-import org.valkyrienskies.mod.common.jackson.BlockPosKeyDeserializer
-import org.valkyrienskies.mod.common.jackson.BlockPosKeySerializer
-import org.valkyrienskies.mod.common.jackson.BlockPosSerializer
 import org.valkyrienskies.mod.common.networking.VSGamePackets
 import org.valkyrienskies.mod.common.util.BuoyancyHandlerAttachment
 import org.valkyrienskies.mod.common.util.OceanWaveField
@@ -161,16 +155,6 @@ object ValkyrienSkiesMod {
         BlockStateInfo.init()
         VSGamePackets.register()
         VSGamePackets.registerHandlers()
-
-        // region Register BlockPos for serialization in force inducers
-        val aabbModule = SimpleModule()
-        aabbModule.addSerializer(BlockPos::class.java, BlockPosSerializer())
-        aabbModule.addDeserializer(BlockPos::class.java, BlockPosDeserializer())
-        aabbModule.addKeySerializer(BlockPos::class.java, BlockPosKeySerializer())
-        aabbModule.addKeyDeserializer(BlockPos::class.java, BlockPosKeyDeserializer())
-        val mapper = ObjectMapper()
-        mapper.registerModule(aabbModule)
-        // end region
 
         splitHandler = SplitHandler(this.vsCore.hooks.enableBlockEdgeConnectivity, this.vsCore.hooks.enableBlockCornerConnectivity)
 

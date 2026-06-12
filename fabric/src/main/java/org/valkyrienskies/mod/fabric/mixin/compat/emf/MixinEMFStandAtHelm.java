@@ -6,7 +6,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import org.valkyrienskies.mod.common.util.PoseDebug;
 import org.valkyrienskies.mod.mixinducks.client.render.ShipMountPoseRenderState;
 
 /**
@@ -42,7 +41,6 @@ public abstract class MixinEMFStandAtHelm {
         final EntityRenderState state = getEntityRenderState();
         if (state instanceof ShipMountPoseRenderState
             && ((ShipMountPoseRenderState) state).vs$isShipMountStanding()) {
-            PoseDebug.change("emf.isRiding", "forced false (helm stand)");
             cir.setReturnValue(false);
         }
     }

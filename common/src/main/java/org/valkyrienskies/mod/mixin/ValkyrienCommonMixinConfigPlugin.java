@@ -7,23 +7,16 @@ import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.Mixins;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
-import org.spongepowered.asm.service.MixinService;
 import org.valkyrienskies.mod.compat.LoadedMods;
-import org.valkyrienskies.mod.compat.LoadedMods.FlywheelVersion;
 import org.valkyrienskies.mod.compat.VSRenderer;
 
 /**
- * Used to detect Optifine and apply/not apply Optifine compatible mixins
+ * Gates renderer-/mod-specific mixins on what is actually installed. The 1.21.11 fork registers
+ * only the sodium + voxy mod_compat mixins; the upstream filter branches for unregistered compat
+ * packages (create, flywheel, bluemap, optifine, ...) were removed with them — restore from
+ * upstream if those mixins are ever re-registered.
  */
 public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
-
-    private static final boolean PATH_FINDING_DEBUG =
-        "false".equals(System.getProperty("org.valkyrienskies.render_pathfinding"));
-
-    // Diagnostic: -Dvs.disableMixins=substr1,substr2 skips any mixin whose fully-qualified
-    // name contains one of the substrings. Used to bisect render-corruption bugs.
-    private static final String VS_DISABLE_MIXINS =
-        System.getProperty("vs.disableMixins", "").trim();
 
     private static VSRenderer vsRenderer = null;
 
@@ -67,22 +60,6 @@ public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(final String s, final String mixinClassName) {
-        if (!VS_DISABLE_MIXINS.isEmpty()) {
-            for (final String token : VS_DISABLE_MIXINS.split(",")) {
-                final String trimmed = token.trim();
-                if (!trimmed.isEmpty() && mixinClassName.contains(trimmed)) {
-                    MixinService.getService().getLogger("mixin")
-                        .warn("[VS2-DIAG] vs.disableMixins -> skipping " + mixinClassName);
-                    return false;
-                }
-            }
-        }
-
-        final VSRenderer renderer = getVSRenderer();
-
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.immersive_portals")) {
-            return LoadedMods.getImmersivePortals(); // Only load this mixin if immersive portals is present
-        }
         if (
             mixinClassName.equals("org.valkyrienskies.mod.mixin.client.world.MixinClientChunkCache") ||
                 mixinClassName.equals("org.valkyrienskies.mod.mixin.client.renderer.MixinViewAreaVanilla")
@@ -91,71 +68,7 @@ public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.sodium")) {
-            return renderer == VSRenderer.SODIUM;
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.optifine_vanilla")) {
-            return renderer == VSRenderer.VANILLA || renderer == VSRenderer.OPTIFINE;
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.vanilla_renderer")) {
-            return renderer == VSRenderer.VANILLA;
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.optifine")) {
-            return renderer == VSRenderer.OPTIFINE;
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.feature.render_pathfinding")) {
-            return PATH_FINDING_DEBUG;
-        }
-
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.flywheel")) {
-            // Only load this mixin if Flywheel v1 is present
-            return LoadedMods.getFlywheel() == FlywheelVersion.V1;
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.flywheel_renderer")) {
-            // Only load this mixin if Flywheel v1 is present
-            return LoadedMods.getFlywheel() == FlywheelVersion.V1;
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.old_flywheel")) {
-            // Only load this mixin if Flywheel v1 is present
-            return LoadedMods.getFlywheel() == FlywheelVersion.V06;
-        }
-
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.bluemap")) {
-            // Our mixins will crash if bluemap version is NONE or 5.12(+)
-            // We can't support bluemap 5.12(+) because it needs JVM 21, so that's for an addon to do.
-            return LoadedMods.getBluemap().matches("^5\\.3(-.*)?$");
-        }
-
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.common_create.client.trackOutlines")) {
-            //interactive has its own track outline stuff so disable fixed version of VS2's track outline stuff
-            if (classExists("org.valkyrienskies.create_interactive.mixin.client.MixinTrackBlockOutline")) {
-                MixinService.getService().getLogger("mixin")
-                    .info("[VS2] found Interactive, disabling VS2's trackOutline Compat - " +
-                        mixinClassName.substring(mixinClassName.lastIndexOf(".") + 1));
-                return false;
-            }
-        }
-
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.common_create")) {
-            // Only load this mixin if Create is present
-            return LoadedMods.getCreate() || LoadedMods.getOldCreate();
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.old_create")) {
-            return LoadedMods.getOldCreate();
-        }
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.create")) {
-            return LoadedMods.getCreate();
-        }
-
-        // Only load this mixin when ETF is installed
-        if (mixinClassName.equals("org.valkyrienskies.mod.mixin.mod_compat.etf.MixinBlockEntity")) {
-            if (!classExists("traben.entity_texture_features.utils.ETFEntity")) {
-                return false;
-            }
-        }
-
-        if (mixinClassName.contains("org.valkyrienskies.mod.mixin.mod_compat.alex_caves")) {
-            // Only load this mixin if Alex Caves is installed
-            return LoadedMods.getAlexCaves();
+            return getVSRenderer() == VSRenderer.SODIUM;
         }
 
         return true;

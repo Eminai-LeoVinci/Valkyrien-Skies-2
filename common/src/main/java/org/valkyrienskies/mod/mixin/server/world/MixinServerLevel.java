@@ -119,16 +119,6 @@ public abstract class MixinServerLevel implements IShipObjectWorldServerProvider
         }
     }
 
-    // Enable with -Dvs.traceScheduledTicks=true to emit trace logs for scheduled-tick
-    // plumbing on shipyard chunks. Off by default because it's noisy.
-    @Unique
-    private static final boolean VS$TRACE_SCHEDULED_TICKS =
-        Boolean.getBoolean("vs.traceScheduledTicks");
-
-    @Unique
-    private static final org.slf4j.Logger VS$TICK_TRACE_LOG =
-        org.slf4j.LoggerFactory.getLogger("VS2-TickTrace");
-
     // Map from ChunkPos to the list of voxel chunks that chunk owns
     @Unique
     private final Map<ChunkPos, List<Vector3ic>> vs$knownChunks = new HashMap<>();
@@ -244,11 +234,6 @@ public abstract class MixinServerLevel implements IShipObjectWorldServerProvider
                     final ServerLevel self = ServerLevel.class.cast(this);
                     levelChunk.registerTickContainerInLevel(self);
                     self.startTickingChunk(levelChunk);
-                    if (VS$TRACE_SCHEDULED_TICKS) {
-                        VS$TICK_TRACE_LOG.info(
-                            "vs$loadChunk registered tick container for shipyard chunk=({},{}) gameTime={}",
-                            cx, cz, self.getGameTime());
-                    }
                 }
             }
 

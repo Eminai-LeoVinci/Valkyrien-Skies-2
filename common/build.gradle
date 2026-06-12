@@ -65,9 +65,6 @@ dependencies {
     modCompileOnly("curse.maven:entity-model-features-844662:5696901")
     modCompileOnly("curse.maven:entity-texture-features-fabric-568563:5697084")
 
-    // Weather2 1.20.1
-    modCompileOnly("curse.maven:weather-storms-tornadoes-237746:5244118")
-
     modCompileOnly("net.fabricmc.fabric-api:fabric-api:${fabric_api_version}")
     //Common create compat,
     //We just use a version from a platform and hope the classes exist on both versions and mixins apply correctly
@@ -132,6 +129,28 @@ sourceSets {
             exclude "org/valkyrienskies/mod/mixin/feature/render_pathfinding/**"
             exclude "org/valkyrienskies/mod/mixin/feature/fix_render_chunk_sorting/**"
             exclude "org/valkyrienskies/mod/mixin/feature/render_blockentity_distance_check/**"
+            // Unregistered mixins (removed from valkyrienskies-common.mixins.json during the port,
+            // or never registered upstream): parked as source, excluded so they don't ship as dead
+            // classes. PER-FILE on purpose -- several of these packages also contain LIVE registered
+            // mixins (commands, wave_spawning, world_border, world_weather, transform_particles,
+            // ai/goal, client/player, world/level/levelgen), so directory globs would break them.
+            exclude "org/valkyrienskies/mod/mixin/feature/conduit_fix/ConduitMixin.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/fluid_camera_fix/MixinCamera.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/hit_outline/MixinLevelRenderer.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/ship_debug_overlay/MixinDebugScreenOverlay.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/teleport_reconnected_player_to_ship/MixinServerPlayer.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/wave_spawning/MixinRaid.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/wave_spawning/MixinRaids.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/world_border/MixinLevel.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/ai/goal/bees/MixinPollinateGoal.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/commands/MixinArgumentTypeInfos.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/transform_particles/MixinLevelRenderer.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/explosions/MixinExplosion.java"
+            exclude "org/valkyrienskies/mod/mixin/client/player/MixinPlayer.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/shipyard_leashing/MixinPathfinderMob.java"
+            exclude "org/valkyrienskies/mod/mixin/feature/world_weather/MixinServerLevel.java"
+            exclude "org/valkyrienskies/mod/mixin/world/level/levelgen/MixinFlatLevelSource.java"
+            exclude "org/valkyrienskies/mod/mixin/world/level/levelgen/MixinNoiseBasedChunkGenerator.java"
         }
         kotlin {
             exclude "org/valkyrienskies/mod/compat/hexcasting/**"

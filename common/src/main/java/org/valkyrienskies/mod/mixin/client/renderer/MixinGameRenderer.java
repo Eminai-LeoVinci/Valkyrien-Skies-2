@@ -148,8 +148,6 @@ public abstract class MixinGameRenderer {
                         entity.xo = cachedLastPosition.x();
                         entity.yo = cachedLastPosition.y();
                         entity.zo = cachedLastPosition.z();
-                    } else {
-                        System.err.println("How was cachedLastPosition was null?");
                     }
                 }
             }

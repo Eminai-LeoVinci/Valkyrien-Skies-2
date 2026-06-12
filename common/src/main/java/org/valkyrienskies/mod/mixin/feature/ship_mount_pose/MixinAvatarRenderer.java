@@ -9,7 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.valkyrienskies.mod.common.entity.ShipMountingEntity;
-import org.valkyrienskies.mod.common.util.PoseDebug;
 import org.valkyrienskies.mod.mixinducks.client.render.ShipMountPoseRenderState;
 
 @Mixin(AvatarRenderer.class)
@@ -41,10 +40,6 @@ public class MixinAvatarRenderer {
             // defeats it regardless of source; the standing flag (above) still drives the
             // arms-on-wheel pose in MixinPlayerModel.
             state.isPassenger = false;
-        }
-        if (vehicle != null) {
-            PoseDebug.change("extract.vehicle",
-                vehicle.getClass().getName() + " standing=" + standing + " isPassenger=" + state.isPassenger);
         }
     }
 }

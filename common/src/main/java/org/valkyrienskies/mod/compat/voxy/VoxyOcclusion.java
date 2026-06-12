@@ -96,11 +96,6 @@ public final class VoxyOcclusion {
     private static boolean failed = false;
     private static boolean resolved = false;
 
-    /** One-shot guard for the per-pixel recon dump (2.4.174); only consumed on the main pass. */
-    private static boolean perPixelDiagLogged = false;
-    /** Frame attempts for the recon; bounded so we don't retry forever if the main pass never matches. */
-    private static int perPixelDiagAttempts = 0;
-
     private static Method mGetRenderSystem; // LevelRenderer.voxy$getRenderSystem()
     private static Method mGetViewport;     // VoxyRenderSystem.getViewport()
     private static Field fPipeline;         // VoxyRenderSystem.pipeline (private)
@@ -121,10 +116,6 @@ public final class VoxyOcclusion {
 
     public static boolean isPresent() {
         return !failed;
-    }
-
-    public static void logCulledCount(final int n) {
-        LOGGER.info("[vs voxy-occlusion] hiding {} ship(s) fully behind LOD terrain", n);
     }
 
     /**
@@ -490,122 +481,5 @@ public final class VoxyOcclusion {
             }
         }
         return m;
-    }
-
-    // ------------------------------------------------------------------------------------------------
-    // PER-PIXEL RECON (2.4.174): one-shot dump of everything the real per-pixel fix needs to know about
-    // the depth buffer the hull is drawn into under Iris, plus Voxy's LOD depth + reprojection matrices.
-    // Read-only; fully guarded. Called from MixinFeatureRenderDispatcher#renderAllFeatures TAIL, where
-    // Iris's gbuffer target is live and the immediate ship terrain flushes.
-    // ------------------------------------------------------------------------------------------------
-
-    /**
-     * Dump the MAIN-pass ship-draw depth target + Voxy LOD depth + matrices, once. The first
-     * renderAllFeatures of a frame is the Iris SHADOW pass (2048^2 depth, Voxy viewport null); we skip
-     * those and only consume the one-shot on the main pass, identified by a non-null Voxy viewport.
-     */
-    public static void logPerPixelDiag(final LevelRenderer lr) {
-        if (perPixelDiagLogged) {
-            return;
-        }
-        if (++perPixelDiagAttempts > 1200) {
-            perPixelDiagLogged = true; // ~ a few seconds of frames; stop trying
-            LOGGER.info("[vs perpixel-diag] gave up (no main pass with a Voxy viewport seen)");
-            return;
-        }
-        try {
-            if (lr != null && mGetRenderSystem == null) {
-                try {
-                    mGetRenderSystem = lr.getClass().getMethod("voxy$getRenderSystem");
-                } catch (final NoSuchMethodException notVoxy) {
-                    perPixelDiagLogged = true;
-                    LOGGER.info("[vs perpixel-diag] Voxy not present");
-                    return;
-                }
-            }
-            if (lr == null || mGetRenderSystem == null) {
-                return; // retry
-            }
-            final Object vrs = mGetRenderSystem.invoke(lr);
-            if (vrs == null) {
-                return; // retry
-            }
-            if (!resolved) {
-                resolveHandles(vrs);
-            }
-            if (!resolved) {
-                return; // framebuffer not built yet (shadow pass / loading) -- retry
-            }
-            final Object viewport = mGetViewport.invoke(vrs);
-            if (viewport == null) {
-                return; // Iris shadow pass -- not the main pass; retry next frame
-            }
-
-            // --- MAIN PASS: consume the one-shot and dump everything. ---
-            perPixelDiagLogged = true;
-
-            final Object override = RenderSystem.outputDepthTextureOverride;
-            LOGGER.info("[vs perpixel-diag] outputDepthTextureOverride={}",
-                override == null ? "null" : override.getClass().getName());
-
-            // The GL depth attachment bound for drawing at this hook (the main gbuffer depth).
-            final int fbo = GL11C.glGetInteger(GL30C.GL_DRAW_FRAMEBUFFER_BINDING);
-            final int dType = GL30C.glGetFramebufferAttachmentParameteri(GL30C.GL_DRAW_FRAMEBUFFER,
-                GL30C.GL_DEPTH_ATTACHMENT, GL30C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-            final int dId = GL30C.glGetFramebufferAttachmentParameteri(GL30C.GL_DRAW_FRAMEBUFFER,
-                GL30C.GL_DEPTH_ATTACHMENT, GL30C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-            final int sId = GL30C.glGetFramebufferAttachmentParameteri(GL30C.GL_DRAW_FRAMEBUFFER,
-                GL30C.GL_STENCIL_ATTACHMENT, GL30C.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME);
-            int fmt = -1;
-            int tw = -1;
-            int th = -1;
-            if (dType == GL11C.GL_TEXTURE && dId > 0) {
-                fmt = GL45C.glGetTextureLevelParameteri(dId, 0, GL11C.GL_TEXTURE_INTERNAL_FORMAT);
-                tw = GL45C.glGetTextureLevelParameteri(dId, 0, GL11C.GL_TEXTURE_WIDTH);
-                th = GL45C.glGetTextureLevelParameteri(dId, 0, GL11C.GL_TEXTURE_HEIGHT);
-            }
-            LOGGER.info("[vs perpixel-diag] MAIN drawFBO={} depthAtt(type=0x{} id={} fmt=0x{} {}x{}) stencilId={}",
-                fbo, Integer.toHexString(dType), dId, Integer.toHexString(fmt), tw, th, sId);
-
-            final Object pipeline = fPipeline.get(vrs);
-            final Object fb = pipeline == null ? null : fFb.get(pipeline);
-            final Object depthTex = fb == null ? null : mGetDepthTex.invoke(fb);
-            final int voxId = depthTex == null ? -1 : fTexId.getInt(depthTex);
-            final int vw = fVpWidth.getInt(viewport);
-            final int vh = fVpHeight.getInt(viewport);
-            int voxFmt = -1;
-            if (voxId > 0) {
-                voxFmt = GL45C.glGetTextureLevelParameteri(voxId, 0, GL11C.GL_TEXTURE_INTERNAL_FORMAT);
-            }
-            LOGGER.info("[vs perpixel-diag] voxyDepth(id={} fmt=0x{} viewport={}x{})",
-                voxId, Integer.toHexString(voxFmt), vw, vh);
-            logMat(viewport, "projection");
-            logMat(viewport, "vanillaProjection");
-            logMat(viewport, "modelView");
-        } catch (final Throwable t) {
-            // Don't consume the one-shot on a transient failure; the attempt cap stops any spam.
-            if (perPixelDiagAttempts % 240 == 1) {
-                LOGGER.warn("[vs perpixel-diag] attempt failed (will retry)", t);
-            }
-        }
-    }
-
-    /** Log a viewport matrix's depth-relevant entries (or that it's absent / a different type). */
-    private static void logMat(final Object viewport, final String name) {
-        if (viewport == null) {
-            return;
-        }
-        try {
-            final Field f = viewport.getClass().getField(name);
-            final Object m = f.get(viewport);
-            if (m instanceof Matrix4f mat) {
-                LOGGER.info("[vs perpixel-diag] {}: m22={} m23={} m32={} m33={}",
-                    name, mat.m22(), mat.m23(), mat.m32(), mat.m33());
-            } else {
-                LOGGER.info("[vs perpixel-diag] {}: type={}", name, m == null ? "null" : m.getClass().getName());
-            }
-        } catch (final Throwable t) {
-            LOGGER.info("[vs perpixel-diag] {}: NOT PRESENT ({})", name, t.getClass().getSimpleName());
-        }
     }
 }

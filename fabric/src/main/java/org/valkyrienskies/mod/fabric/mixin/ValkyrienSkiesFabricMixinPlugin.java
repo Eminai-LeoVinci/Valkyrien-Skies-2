@@ -5,15 +5,9 @@ import java.util.Set;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
-import org.spongepowered.asm.service.MixinService;
 import org.valkyrienskies.mod.compat.LoadedMods;
 
 public class ValkyrienSkiesFabricMixinPlugin implements IMixinConfigPlugin {
-
-    // Diagnostic: -Dvs.disableMixins=substr1,substr2 skips any mixin whose fully-qualified
-    // name contains one of the substrings. Used to bisect render-corruption bugs.
-    private static final String VS_DISABLE_MIXINS =
-        System.getProperty("vs.disableMixins", "").trim();
 
     private static boolean classExists(final String className) {
         try {
@@ -36,19 +30,6 @@ public class ValkyrienSkiesFabricMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(final String s, final String mixinClassName) {
-        if (!VS_DISABLE_MIXINS.isEmpty()) {
-            for (final String token : VS_DISABLE_MIXINS.split(",")) {
-                final String trimmed = token.trim();
-                if (!trimmed.isEmpty() && mixinClassName.contains(trimmed)) {
-                    MixinService.getService().getLogger("mixin")
-                        .warn("[VS2-DIAG] vs.disableMixins -> skipping " + mixinClassName);
-                    return false;
-                }
-            }
-        }
-
-        final boolean isMixinBoosterLoaded = classExists("io.github.steelwoolmc.mixintransmog.MixinModlauncherRemapper");
-
         if (mixinClassName.contains("org.valkyrienskies.mod.fabric.mixin.compat.old_create")) {
             return LoadedMods.getOldCreate();
         }

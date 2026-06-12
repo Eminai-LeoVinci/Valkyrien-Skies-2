@@ -12,7 +12,6 @@ import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.ServerPlayerGameMode;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -112,33 +111,6 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
         return VectorConversionsMCKt.toMinecraft(worldBox);
     }
 
-    /*
-    @WrapOperation(
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/world/level/ChunkPos;getChessboardDistance(Lnet/minecraft/world/level/ChunkPos;)I"
-        ),
-        method = "handleUseItemOn"
-    )
-    private int skipDistanceCheck(final ChunkPos instance, final ChunkPos chunkPos, final Operation<Integer> getChessboardDistance) {
-        return 0;
-    }
-
-     */
-
-    @WrapOperation(
-        method = "handleMovePlayer",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;isSingleplayerOwner()Z"
-        ),
-        require = 0
-    )
-    private boolean shouldSkipMoveCheck1(final ServerGamePacketListenerImpl instance,
-        final Operation<Boolean> isSinglePlayerOwner) {
-        return !VSGameConfig.SERVER.getEnableMovementChecks();
-    }
-
     @WrapOperation(
         method = "handleMoveVehicle",
         at = @At(
@@ -152,23 +124,9 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
         return !VSGameConfig.SERVER.getEnableMovementChecks();
     }
 
-    @WrapOperation(
-        method = "handleMovePlayer",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/server/level/ServerPlayerGameMode;isCreative()Z"
-        ),
-        require = 0
-    )
-    private boolean shouldSkipMoveCheck(final ServerPlayerGameMode instance,
-        final Operation<Boolean> isSinglePlayerOwner) {
-        return !VSGameConfig.SERVER.getEnableMovementChecks();
-    }
-
     // 1.21.11: the "moved wrongly" rubber-band gate now calls `ServerPlayer.isCreative()`
-    // directly inside handleMovePlayer (older VS2 wrap above targets ServerPlayerGameMode
-    // which is the old call path — present here for back-compat, silently no-ops on 1.21.11
-    // because the call site moved). Without this, a *survival* player standing on a moving
+    // directly inside handleMovePlayer (upstream's old wrap targeted ServerPlayerGameMode,
+    // a call path that no longer exists). Without this, a *survival* player standing on a moving
     // ship gets rubber-banded every tick: server position is dragged forward by
     // EntityDragger but the player's client→server move packet trips the bl4
     // ("moved wrongly!") delta check, the server teleports them back, drag pushes them
@@ -192,11 +150,10 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
 
     // 1.21.11: the "moved too quickly" rubber-band is now gated by the new
     // shouldCheckPlayerMovement(boolean) helper (which itself consults isSingleplayerOwner,
-    // dimension-change state, and the PLAYER_MOVEMENT_CHECK gamerule). The legacy
-    // shouldSkipMoveCheck1 above targets a direct isSingleplayerOwner() call from
-    // handleMovePlayer that no longer exists — silent no-op. Skipping the whole helper
-    // is equivalent to "don't run the speed check" — the same outcome
-    // enableMovementChecks=false has always intended.
+    // dimension-change state, and the PLAYER_MOVEMENT_CHECK gamerule). Skipping the whole
+    // helper is equivalent to "don't run the speed check" — the same outcome
+    // enableMovementChecks=false has always intended. (Upstream's wrap of a direct
+    // isSingleplayerOwner() call in handleMovePlayer targeted a call path removed in 1.21.11.)
     @WrapOperation(
         method = "handleMovePlayer",
         at = @At(

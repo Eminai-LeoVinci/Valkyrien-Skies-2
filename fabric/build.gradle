@@ -140,6 +140,8 @@ sourceSets {
             exclude "org/valkyrienskies/mod/fabric/mixin/compat/create/client/MixinBlockEntityRenderHelper.java"
             exclude "org/valkyrienskies/mod/fabric/mixin/compat/create/client/MixinChainConveyorBlockEntity.java"
             exclude "org/valkyrienskies/mod/fabric/mixin/compat/sodium/MixinSodiumWorldRenderer.java"
+            // Unregistered during the port (removed from valkyrienskies-fabric.mixins.json) -- parked.
+            exclude "org/valkyrienskies/mod/fabric/mixin/world/level/block/FireMixin.java"
         }
         kotlin {
             exclude "org/valkyrienskies/mod/fabric/compat/hexcasting/**"

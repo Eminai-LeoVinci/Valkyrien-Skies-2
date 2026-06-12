@@ -33,16 +33,11 @@ class ShipSavedData : SavedData() {
             val chunkAllocatorAsBytes = compoundTag.getByteArray(CHUNK_ALLOCATOR_NBT_KEY).orElse(empty)
             val pipelineAsBytes = compoundTag.getByteArray(PIPELINE_NBT_KEY).orElse(empty)
 
-            logger.info(" ShipSavedData.load(): pipeline bytes = {} KB, legacy queryable = {} KB, legacy allocator = {} KB",
-                pipelineAsBytes.size / 1024, queryableShipDataAsBytes.size / 1024, chunkAllocatorAsBytes.size / 1024)
-
             try {
                 if (pipelineAsBytes.isNotEmpty()) {
                     data.pipeline = vsCore.newPipeline(pipelineAsBytes)
-                    logger.info(" ShipSavedData.load(): loaded pipeline from {} KB of data", pipelineAsBytes.size / 1024)
                 } else if (queryableShipDataAsBytes.isNotEmpty() && chunkAllocatorAsBytes.isNotEmpty()) {
                     data.pipeline = vsCore.newPipelineLegacyData(queryableShipDataAsBytes, chunkAllocatorAsBytes)
-                    logger.info(" ShipSavedData.load(): loaded pipeline from legacy data")
                 } else {
                     throw IllegalStateException("Couldn't find serialized ship data")
                 }
@@ -67,10 +62,7 @@ class ShipSavedData : SavedData() {
      * This is kept as a plain method; the codec/SavedDataType wiring lives in MixinMinecraftServer.
      */
     fun saveToTag(compoundTag: CompoundTag): CompoundTag {
-        val logger = org.slf4j.LoggerFactory.getLogger("VS2")
-        val bytes = vsCore.serializePipeline(pipeline)
-        logger.info(" ShipSavedData.save(): pipeline bytes = {} KB", bytes.size / 1024)
-        compoundTag.putByteArray(PIPELINE_NBT_KEY, bytes)
+        compoundTag.putByteArray(PIPELINE_NBT_KEY, vsCore.serializePipeline(pipeline))
         return compoundTag
     }
 

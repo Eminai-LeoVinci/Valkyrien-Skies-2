@@ -111,12 +111,10 @@ public abstract class MixinCamera implements IVSCamera {
 
             dist = dist > 5 ? dist : 5;
 
-            if (this.level instanceof Level) {
-                final double maxZoom = this.valkyrienskies$getMaxZoomIgnoringMountedShip((Level) this.level, 4.0 * (dist / 4.0), shipMountedTo);
-                this.move((float) -maxZoom, 0.0f, 0.0f);
-            } else {
-                this.move(-this.getMaxZoom((float) (4.0 * (dist / 4.0))), 0.0f, 0.0f);
-            }
+            // Camera.level is always the ClientLevel here (a Level).
+            final double maxZoom =
+                this.valkyrienskies$getMaxZoomIgnoringMountedShip((Level) this.level, dist, shipMountedTo);
+            this.move((float) -maxZoom, 0.0f, 0.0f);
         }
     }
 

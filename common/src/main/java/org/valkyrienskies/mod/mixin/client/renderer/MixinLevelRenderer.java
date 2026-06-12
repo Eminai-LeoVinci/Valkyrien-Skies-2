@@ -198,64 +198,11 @@ public abstract class MixinLevelRenderer {
         this.valkyrienskies$mainPassFrustum = frustum;
     }
 
-    // Ship blocks live in far-away shipyard chunks and must be re-drawn each frame at the ship's
-    // render transform. The 1.21.11 section renderer is GPU-driven and cannot be given a per-ship
-    // transform, so ship blocks are drawn in immediate mode in a dedicated frame-graph pass
-    // inserted right after the main terrain pass.
-    @Inject(
-        method = "renderLevel",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/renderer/LevelRenderer;addMainPass(Lcom/mojang/blaze3d/framegraph/FrameGraphBuilder;Lnet/minecraft/client/renderer/culling/Frustum;Lorg/joml/Matrix4f;Lcom/mojang/blaze3d/buffers/GpuBufferSlice;ZLnet/minecraft/client/renderer/state/LevelRenderState;Lnet/minecraft/client/DeltaTracker;Lnet/minecraft/util/profiling/ProfilerFiller;)V",
-            shift = At.Shift.AFTER
-        ),
-        require = 1
-    )
-    private void valkyrienskies$addShipRenderPass(final GraphicsResourceAllocator graphicsResourceAllocator,
-        final DeltaTracker deltaTracker, final boolean bl, final Camera camera, final Matrix4f matrix4f,
-        final Matrix4f matrix4f2, final Matrix4f matrix4f3, final GpuBufferSlice gpuBufferSlice,
-        final Vector4f vector4f, final boolean bl2, final CallbackInfo ci,
-        @Local final FrameGraphBuilder frameGraphBuilder) {
-
-        // 1.21.11 port / Iris diagnostic: the vs_ships frame-graph pass is the prime suspect for
-        // the world-terrain corruption under shaders -- it perturbs the frame graph that Iris
-        // rewrites. Skip adding the pass entirely to confirm. Ship BLOCKS will not render while
-        // this is active (ship block entities still will).
-        if (true) {
-            return;
-        }
-
-        final FramePass framePass = frameGraphBuilder.addPass("vs_ships");
-        this.targets.main = framePass.readsAndWrites(this.targets.main);
-        framePass.executes(() -> valkyrienskies$renderShipBlocks(camera, gpuBufferSlice));
-    }
-
-    @Unique
-    private void valkyrienskies$renderShipBlocks(final Camera camera, final GpuBufferSlice shaderFog) {
-        final ClientLevel clientLevel = this.level;
-        if (clientLevel == null) {
-            return;
-        }
-        try {
-            RenderSystem.setShaderFog(shaderFog);
-            final Vec3 camPos = camera.position();
-            final BlockRenderDispatcher dispatcher = this.minecraft.getBlockRenderer();
-            final MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
-            final PoseStack poseStack = new PoseStack();
-            final RandomSource random = RandomSource.create();
-
-            for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
-                valkyrienskies$renderShip(ship, clientLevel, dispatcher, bufferSource, poseStack, random,
-                    camPos.x, camPos.y, camPos.z);
-            }
-            bufferSource.endBatch();
-        } catch (final Throwable t) {
-            if (!this.valkyrienskies$loggedShipRenderError) {
-                this.valkyrienskies$loggedShipRenderError = true;
-                t.printStackTrace();
-            }
-        }
-    }
+    // NOTE (1.21.11): ship terrain is NOT drawn in a dedicated frame-graph pass. A "vs_ships"
+    // FramePass was tried and corrupted world terrain under Iris (it perturbs the frame graph
+    // Iris rewrites); ship terrain instead draws from submitBlockEntities below, through MC's
+    // normal geometry path. valkyrienskies$renderShip is the immediate-mode fallback used there
+    // when the mesh cache can't run.
 
     @Unique
     private void valkyrienskies$renderShip(final ClientShip ship, final ClientLevel clientLevel,
@@ -383,9 +330,6 @@ public abstract class MixinLevelRenderer {
                     }
                 }
                 vsLodOccluded = occ;
-                if (!occ.isEmpty() && this.valkyrienskies$frameCounter % 60L == 0L) {
-                    VoxyOcclusion.logCulledCount(occ.size());
-                }
             } else {
                 vsLodOccluded = java.util.Collections.emptySet();
             }
@@ -450,7 +394,8 @@ public abstract class MixinLevelRenderer {
         } catch (final Throwable t) {
             if (!this.valkyrienskies$loggedShipRenderError) {
                 this.valkyrienskies$loggedShipRenderError = true;
-                t.printStackTrace();
+                org.slf4j.LoggerFactory.getLogger("valkyrienskies")
+                    .error("Ship render failed (logged once)", t);
             }
         }
     }
@@ -602,49 +547,5 @@ public abstract class MixinLevelRenderer {
         // mis-classified a half-slab-floored helm as seated and skipped this detached backstop.
         return true;
     }
-
-    /**
-     * This mixin makes block damage render on ships.
-     */
-    /*
-    @WrapOperation(method = "renderLevel", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/client/renderer/block/BlockRenderDispatcher;renderBreakingTexture(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/BlockAndTintGetter;Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;)V"))
-    private void renderBlockDamage(final BlockRenderDispatcher blockRenderManager, final BlockState state,
-        final BlockPos blockPos, final BlockAndTintGetter blockRenderWorld, final PoseStack matrix,
-        final VertexConsumer vertexConsumer, final Operation<Void> renderBreakingTexture) {
-
-
-        final ClientShip ship = VSGameUtilsKt.getShipObjectManagingPos(level, blockPos);
-        if (ship != null) {
-            // Remove the vanilla render transform
-            matrixStack.popPose();
-
-            // Add the VS render transform
-            matrixStack.pushPose();
-
-            final ShipTransform renderTransform = ship.getRenderTransform();
-            final Vec3 cameraPos = methodCamera.getPosition();
-
-            transformRenderWithShip(renderTransform, matrixStack, blockPos, cameraPos.x, cameraPos.y, cameraPos.z);
-
-            final Matrix3f newNormalMatrix = matrixStack.last().normal().copy();
-            final Matrix4f newModelMatrix = matrixStack.last().pose().copy();
-
-            // Then update the matrices in vertexConsumer (I'm guessing vertexConsumer is responsible for mapping
-            // textures, so we need to update its matrices otherwise the block damage texture looks wrong)
-            final SheetedDecalTextureGenerator newVertexConsumer =
-                new SheetedDecalTextureGenerator(((OverlayVertexConsumerAccessor) vertexConsumer).getDelegate(),
-                    newModelMatrix, newNormalMatrix);
-
-            // Finally, invoke the render damage function.
-            renderBreakingTexture.call(blockRenderManager, state, blockPos, blockRenderWorld, matrix,
-                newVertexConsumer);
-        } else {
-            // Vanilla behavior
-            renderBreakingTexture.call(blockRenderManager, state, blockPos, blockRenderWorld, matrix, vertexConsumer);
-        }
-    }
-
-     */
 
 }

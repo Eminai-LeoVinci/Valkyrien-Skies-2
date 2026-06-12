@@ -26,6 +26,9 @@ public class MixinGui {
     @Final
     private Minecraft minecraft;
 
+    @org.spongepowered.asm.mixin.Unique
+    private boolean vs$loggedHudPipelineError = false;
+
     /**
      * Render the "VS 2 Alpha" text
      */
@@ -53,7 +56,11 @@ public class MixinGui {
                 physicsTPS = " " + Math.round(VSGameUtilsKt.getVsPipeline(integratedServer).computePhysTps());
                 loadedVoxelChunks = " " + VSGameUtilsKt.getVsPipeline(integratedServer).getLoadedVoxelChunks();
             } catch (final Exception e) {
-                e.printStackTrace();
+                if (!this.vs$loggedHudPipelineError) {
+                    this.vs$loggedHudPipelineError = true;
+                    org.slf4j.LoggerFactory.getLogger("valkyrienskies")
+                        .warn("VS debug HUD could not reach the server pipeline (logged once)", e);
+                }
             }
             final String worldPhysicsDebugText = "VS PhysTPS: " + physicsTPS;
             debugText.add(worldPhysicsDebugText);

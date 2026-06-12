@@ -4,13 +4,11 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.model.HumanoidModel;
 import net.minecraft.client.model.Model;
-import net.minecraft.client.model.player.PlayerModel;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.valkyrienskies.mod.common.util.PoseDebug;
 import org.valkyrienskies.mod.mixinducks.client.render.ShipMountPoseModel;
 
 /**
@@ -46,7 +44,6 @@ public abstract class MixinModel implements ShipMountPoseModel {
             return;
         }
         final HumanoidModel<?> model = (HumanoidModel<?>) (Object) this;
-        PoseDebug.change("draw.rtb", "standing=true isPlayerModel=" + (((Object) this) instanceof PlayerModel));
         // Standing helm pose for the VANILLA player model (no EMF/CEM pack). Legs straight and
         // visible (undo any seated bend), arms reaching forward onto the wheel. When an EMF custom
         // model pack like FA+Player is active these writes never reach the drawn figure -- EMF draws

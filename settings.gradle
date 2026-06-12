@@ -47,8 +47,6 @@ include("fabric")
 
 try {
     def core = file("./vs-core")
-    println "VS-CORE DEBUG: Looking at path: ${core.absolutePath}"
-    println "VS-CORE DEBUG: Exists? ${core.isDirectory()}"
     if (core.isDirectory()) {
         includeBuild(core) {
             dependencySubstitution {

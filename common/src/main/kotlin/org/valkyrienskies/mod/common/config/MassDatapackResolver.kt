@@ -267,7 +267,8 @@ object MassDatapackResolver : BlockStateInfoProvider {
             try {
                 vsCore.solidShapeUtils.generateShapeFromBoxes(posBoxes)
             } catch (ex: IllegalArgumentException) {
-                println("WTF ERROR WHILE PROCESSING $voxelShape")
+                org.slf4j.LoggerFactory.getLogger("valkyrienskies")
+                    .warn("Failed to generate collision shape for {}", voxelShape, ex)
                 null
             }
         } else {

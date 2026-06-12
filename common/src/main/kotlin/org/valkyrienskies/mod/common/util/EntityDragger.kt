@@ -102,7 +102,7 @@ object EntityDragger {
                             Vector3d(entity.xo, entity.yo, entity.zo)
                         }
 
-                        val referenceTransform = if (shipData is ClientShip) shipData.transform else shipData.transform
+                        val referenceTransform = shipData.transform
 
                         // region Compute position dragging
                         val newPosIdeal: Vector3dc = referenceTransform.shipToWorld.transformPosition(
@@ -173,8 +173,8 @@ object EntityDragger {
 
                 entityDraggingInformation.addedMovementLastTick = addedMovement
 
-                // Apply [addedYRot]
-                if (addedYRot.isFinite()) {
+                // Apply [addedYRot] (finiteness already checked by the enclosing guard)
+                run {
                     if (!entity.level().isClientSide()) {
                         if (entity !is ServerPlayer) {
                             entity.yRot = ((entity.yRot + addedYRot.toFloat()) + 360f) % 360f

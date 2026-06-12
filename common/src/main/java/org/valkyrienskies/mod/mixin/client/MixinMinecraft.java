@@ -41,8 +41,6 @@ public abstract class MixinMinecraft
     private static final Logger log = LogManager.getLogger("VS2 MixinMinecraft");
     @Unique
     private static long lastLog = System.currentTimeMillis();
-    @Unique
-    private static long vs$lastNetworkingAddressLog = 0L;
 
     @Shadow
     private boolean pause;
@@ -126,15 +124,6 @@ public abstract class MixinMinecraft
             final var networkingAddress = remoteAddress != null && remoteAddress.toString().startsWith("local:")
                 ? localAddress
                 : remoteAddress;
-            if (false && vs$lastNetworkingAddressLog + 5000L < System.currentTimeMillis()) {
-                vs$lastNetworkingAddressLog = System.currentTimeMillis();
-                log.info(
-                    "tickNetworking networkingAddress={} remoteAddress={} localAddress={}",
-                    networkingAddress,
-                    remoteAddress,
-                    localAddress
-                );
-            }
             shipObjectWorld.tickNetworking(networkingAddress);
             shipObjectWorld.postTick();
             EntityDragger.INSTANCE.dragEntitiesWithShips(level.entitiesForRendering(), false);
@@ -154,17 +143,6 @@ public abstract class MixinMinecraft
             }
         }
     }
-
-    /* TODO no longer needed
-    @Inject(
-        method = "setCurrentServer",
-        at = @At("HEAD")
-    )
-    public void preSetCurrentServer(final ServerData serverData, final CallbackInfo ci) {
-        ValkyrienSkiesMod.getVsCore().setClientUsesUDP(false);
-    }
-
-     */
 
     @Override
     public void createShipObjectWorldClient() {

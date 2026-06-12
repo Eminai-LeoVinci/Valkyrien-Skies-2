@@ -24,23 +24,6 @@ object VSTicketType {
     )
 
     /**
-     * Ticket for the WORLD-space chunks under an "active" ship (see [org.valkyrienskies.mod.common.util.ShipSettings.keepActive]).
-     *
-     * Used by [ShipActivationManager] with radius 2 (level 31 = ENTITY_TICKING) on the real-world
-     * chunks the ship currently overlaps — the same level vanilla /forceload uses. Unlike [SHIP_CHUNK]
-     * these are NOT shipyard chunks, so vanilla applies normally. vs-core only physics-steps an
-     * already-loaded ship while its world chunk reports isPositionTicking, so this ticket is what keeps
-     * a far, player-less active ship moving. radius 1 (level 32, BLOCK_TICKING) was one level too weak:
-     * the 2.4.127 diagnostic caught a stalled ship ticketed=true but ticking=FALSE, so it never reached
-     * a ticking status without the player's chunks loading the area. Non-persisted (a plain ticket, not
-     * vanilla /forceload), so it never leaks across restarts; the manager releases stale chunks each tick.
-     */
-    @JvmField
-    val SHIP_ACTIVE_WORLD: TicketType = TicketType.register(
-        "vs_ship_active_world", TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING or TicketType.FLAG_SIMULATION
-    )
-
-    /**
      * Ticket for a ship's own SHIPYARD chunks (its blocks), placed by [ShipActivationManager] on EVERY
      * active chunk of an active ship — not just the subset vs-core's watch system tickets.
      *

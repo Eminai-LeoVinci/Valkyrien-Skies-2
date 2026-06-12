@@ -8,7 +8,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.valkyrienskies.mod.common.util.PoseDebug;
 import org.valkyrienskies.mod.mixinducks.client.render.ShipMountPoseModel;
 import org.valkyrienskies.mod.mixinducks.client.render.ShipMountPoseRenderState;
 
@@ -25,7 +24,6 @@ public abstract class MixinPlayerModel extends HumanoidModel<AvatarRenderState> 
     )
     private void vs$standAtShipMount(final AvatarRenderState state, final CallbackInfo ci) {
         final boolean flag = ((ShipMountPoseRenderState) state).vs$isShipMountStanding();
-        PoseDebug.change("setupAnim", "isPassenger=" + state.isPassenger + " standing=" + flag);
         // Only RECORD the flag here. The pose itself is applied at renderToBuffer HEAD (MixinModel),
         // because setupAnim starts with resetPose() and the deferred pipeline re-runs setupAnim
         // right before the draw -- any rotation set here is wiped before geometry is built.

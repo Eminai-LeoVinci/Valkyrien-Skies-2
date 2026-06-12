@@ -392,7 +392,6 @@ object ShipAssembler {
 
         val pendingAssemblies = mutableListOf<PendingAssembly>()
 
-        val phase1Start = System.currentTimeMillis()
         for (blockSet in blockSets) {
             if (blockSet.isEmpty()) continue
 
@@ -436,11 +435,6 @@ object ShipAssembler {
             ))
         }
 
-        val phase1Ms = System.currentTimeMillis() - phase1Start
-        if (pendingAssemblies.size > 5) {
-            ASSEMBLY_LOGGER.info("Batch assembly phase 1 (create ${pendingAssemblies.size} ships): ${phase1Ms}ms (${phase1Ms / pendingAssemblies.size}ms/ship)")
-        }
-
         if (pendingAssemblies.isEmpty()) return emptyList()
 
         // Phase 2: Send ONE batch PacketStopChunkUpdates for ALL ships
@@ -457,7 +451,6 @@ object ShipAssembler {
         // distance manager + main thread tasks until all chunks reach FULL status.
         // This is much faster than calling level.getChunk() 1000 times sequentially,
         // because the chunk pipeline processes multiple chunks on its worker thread pool.
-        val preloadStart = System.currentTimeMillis()
         val chunkSource = level.chunkSource
 
         // Add tickets for all dest chunks first (non-blocking, just queues them)
@@ -478,13 +471,7 @@ object ShipAssembler {
             level.getChunk(cp.x, cp.z)
         }
 
-        val preloadMs = System.currentTimeMillis() - preloadStart
-        if (pendingAssemblies.size > 5) {
-            ASSEMBLY_LOGGER.info("Batch assembly preload (${allDestChunkPoses.size} dest chunks): ${preloadMs}ms")
-        }
-
         // Phase 3: Execute all block moves
-        val phase3Start = System.currentTimeMillis()
         for (pending in pendingAssemblies) {
             // Cache block states during filtering to avoid double getBlockState calls
             val filteredBlocksWithState = mutableListOf<Pair<BlockPos, BlockState>>()
@@ -636,11 +623,6 @@ object ShipAssembler {
             if (pending.fromShip is LoadedServerShip && wasSplittingEnabled) {
                 pending.fromShip.getAttachment(SplittingDisablerAttachment::class.java)?.enableSplitting()
             }
-        }
-
-        val phase3Ms = System.currentTimeMillis() - phase3Start
-        if (pendingAssemblies.size > 5) {
-            ASSEMBLY_LOGGER.info("Batch assembly phase 3 (move blocks for ${pendingAssemblies.size} ships): ${phase3Ms}ms (${phase3Ms / pendingAssemblies.size}ms/ship)")
         }
 
         // Phase 4: ONE batch executeIf callback for ALL ships
