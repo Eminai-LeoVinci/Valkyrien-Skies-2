@@ -63,6 +63,11 @@ public abstract class MixinEntitySectionStorage implements OfLevel {
 
     @Inject(method = "createSection", at = @At("RETURN"))
     void onSectionCreate(final long l, final CallbackInfoReturnable<EntitySection<Entity>> cir) {
+        if (level == null) {
+            // createSection can run during level construction, before setLevel() -- match the
+            // null-guard shipSections() already uses, rather than NPE in isChunkInShipyard.
+            return;
+        }
         if (VSGameUtilsKt.getShipManagingPos(level, SectionPos.x(l), SectionPos.z(l)) == null) {
             if (VSGameUtilsKt.isChunkInShipyard(level, SectionPos.x(l), SectionPos.z(l))) {
                 delayedSections.put(l, cir.getReturnValue());

@@ -159,6 +159,48 @@ object VSGameConfig {
             var shellRecoilMult = 500000.0
         }
 
+        @ConfigCategory(title = "Ocean Waves")
+        val OceanWaves = OCEANWAVES()
+
+        class OCEANWAVES {
+            @ConfigEntry(
+                description = "Make water-borne ships physically bob/pitch/roll with ocean waves, in sync with " +
+                    "Physics Mod / shader waves. Players and mobs stay attached to the deck. Needs a visual wave " +
+                    "source (shader or Physics Mod ocean) to look right; leave OFF on flat vanilla water."
+            )
+            var enableWaveBuoyancy = true
+
+            @ConfigEntry(description = "Wave height in blocks. MUST match the shader's VS_WAVE_HEIGHT so the ship rides the visible swell.")
+            var waveHeight = 4.0
+
+            @ConfigEntry(description = "Horizontal wave scale. Match Physics Mod 'oceanHorizontalWaveScale' (default 1.0).")
+            var horizontalScale = 1.0
+
+            @ConfigEntry(description = "Wave speed multiplier. Raise/lower to match the visible wave motion.")
+            var waveSpeed = 1.0
+
+            @ConfigEntry(description = "Gerstner detail iterations. Canonical Physics Mod value is 13.")
+            var iterations = 13
+
+            @ConfigEntry(description = "How strongly ships are pulled to follow the wave surface (per unit mass).")
+            var stiffness = 8.0
+
+            @ConfigEntry(description = "Vertical bob damping; higher = calmer, prevents runaway oscillation.")
+            var damping = 3.0
+
+            @ConfigEntry(description = "Hull sample grid per axis (NxN). Higher = smoother pitch/roll, slightly more CPU.")
+            var sampleGrid = 3
+
+            @ConfigEntry(description = "Time/phase offset (seconds) to line the physical bob up with the visible waves.")
+            var phaseOffset = 0.0
+
+            @ConfigEntry(description = "World X offset to align the wave field with Physics Mod (advanced).")
+            var offsetX = 0.0
+
+            @ConfigEntry(description = "World Z offset to align the wave field with Physics Mod (advanced).")
+            var offsetZ = 0.0
+        }
+
 
         @ConfigEntry(
             description = "By default, the vanilla server prevents block interacts past a certain distance " +

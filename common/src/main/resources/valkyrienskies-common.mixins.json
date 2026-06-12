@@ -35,6 +35,7 @@
     "feature.block_placement.MixinBlockPlaceContext",
     "feature.clip_replace.MixinBlockGetter",
     "feature.clip_replace.MixinClipContext",
+    "feature.config_recipes.MixinRecipeManager",
     "feature.dismount_dead_entities.MixinLivingEntity",
     "feature.distance_replace.MixinEntity",
     "feature.elytra_firework_fix.MixinFireworkRocketEntity",
@@ -155,7 +156,8 @@
     "mod_compat.sodium.MixinChunkTracker",
     "mod_compat.sodium.MixinDefaultChunkRenderer",
     "mod_compat.sodium.MixinRenderSection",
-    "mod_compat.sodium.MixinRenderSectionManager"
+    "mod_compat.sodium.MixinRenderSectionManager",
+    "mod_compat.voxy.MixinVoxyRenderSystem"
   ],
   "injectors": {
     "defaultRequire": 0

@@ -41,10 +41,13 @@ import org.valkyrienskies.mod.common.jackson.BlockPosKeySerializer
 import org.valkyrienskies.mod.common.jackson.BlockPosSerializer
 import org.valkyrienskies.mod.common.networking.VSGamePackets
 import org.valkyrienskies.mod.common.util.BuoyancyHandlerAttachment
+import org.valkyrienskies.mod.common.util.OceanWaveField
+import org.valkyrienskies.mod.common.util.WaveBuoyancyAttachment
 import org.valkyrienskies.mod.common.util.GameToPhysicsAdapter
 import org.valkyrienskies.mod.common.util.ShipSettings
 import org.valkyrienskies.mod.common.util.SplitHandler
 import org.valkyrienskies.mod.common.util.SplittingDisablerAttachment
+import org.valkyrienskies.mod.common.world.ShipActivationManager
 import org.valkyrienskies.mod.mixinducks.client.world.ClientChunkCacheDuck
 import org.valkyrienskies.mod.mixinducks.feature.tickets.PlayerKnownShipsDuck
 import java.util.ServiceLoader
@@ -134,6 +137,27 @@ object ValkyrienSkiesMod {
         VSCoreConfig.SERVER.shipLoadDistance = 8192.0
         VSCoreConfig.SERVER.shipUnloadDistance = 8704.0
 
+        // Disable the post-load "settling" freeze. vs-core defaults shipLoadFreezeSeconds to 5s and
+        // ShipObjectServerWorld RE-ARMS that freeze on every voxel/terrain update a ship receives. An
+        // autopilot ship streaming new terrain in under itself keeps the freeze permanently armed, so
+        // vs-core clamps it to its kinematic target — the ship simply stops moving mid-flight until a
+        // real player reloads the chunks around it or the world is reopened. That is exactly the
+        // "ships randomly stop under autopilot; getting close or a save+reload revives them" report,
+        // and it's per-ship (each ship re-arms its own freeze), which is why ships stall one at a time
+        // at random. The Forge entrypoint already zeroes this at init; the Fabric entry never did, so
+        // the bug only ever bit Fabric. Set here — before VSConfigUpdater builds the config spec — so
+        // 0.0 becomes the spec default and the generated TOML / config-load can't clobber it back to
+        // 5s (same timing contract as shipLoadDistance above). 0 = disabled, per the setting's doc.
+        VSCoreConfig.SERVER.physics.shipLoadFreezeSeconds = 0.0
+
+        // NOTE: deliberately NOT setting pt.synchronizePhysics = true here (Forge does). Tried it on this
+        // instance (2.4.148) and it made things WORSE: it couples physics to the game thread, so the
+        // modpack's game-thread lag spikes (Voxy "lag will probably happen", "Can't keep up, 114 ticks
+        // behind") stall physics too and freeze ships. ASYNC physics rides through a game-thread hitch.
+        // The cruise-stall freezes correlate with those lag spikes (multiple ships stall on the same
+        // tick = one shared hitch dropping them from the step set with no auto-recovery), so on a heavy
+        // integrated server async is the safer mode. Keep it async (the vs-core default).
+
         BlockStateInfo.init()
         VSGamePackets.register()
         VSGamePackets.registerHandlers()
@@ -158,13 +182,20 @@ object ValkyrienSkiesMod {
             useLegacySerializer()
         }
         core.registerAttachment(BuoyancyHandlerAttachment::class.java)
+        core.registerAttachment(WaveBuoyancyAttachment::class.java)
 
         core.shipLoadEvent.on { event ->
             event.ship.setAttachment(SplittingDisablerAttachment(true))
             event.ship.setAttachment(BuoyancyHandlerAttachment())
+            event.ship.setAttachment(
+                WaveBuoyancyAttachment().also {
+                    it.ship = event.ship as? org.valkyrienskies.core.api.ships.LoadedServerShip
+                }
+            )
         }
 
         core.physTickEvent.on { event ->
+            OceanWaveField.advanceTime(event.delta.toDouble())
             dimensionalGTPAs.forEach { dimensionId, gameTickForceApplier ->
                 if (event.world.dimension == dimensionId) {
                     gameTickForceApplier.physTick(event.world, event.delta)

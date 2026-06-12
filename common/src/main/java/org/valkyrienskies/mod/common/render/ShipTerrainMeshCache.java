@@ -314,7 +314,8 @@ public final class ShipTerrainMeshCache {
      */
     public void renderAll(final ClientLevel level, final BlockRenderDispatcher dispatcher,
         final RandomSource random, final MultiBufferSource.BufferSource bufferSource,
-        final Frustum frustum, final double camX, final double camY, final double camZ) {
+        final Frustum frustum, final java.util.Set<Long> occludedShipIds,
+        final double camX, final double camY, final double camZ) {
 
         if (disabled) {
             return;
@@ -351,6 +352,11 @@ public final class ShipTerrainMeshCache {
                 if (frustum != null && !frustum.isVisible(VectorConversionsMCKt.toMinecraft(ship.getRenderAABB()))) {
                     continue;
                 }
+                // VS-VOXY-OCCLUSION: ship is fully behind Voxy LOD terrain (sampled from Voxy's own
+                // depth buffer in MixinLevelRenderer). Keep its baked sections warm so re-emerging is
+                // instant, but suppress the draw below -- this is also what saves the per-frame
+                // immediate re-emit under shaders for hidden ships.
+                final boolean shipOccluded = occludedShipIds != null && occludedShipIds.contains(ship.getId());
                 final ShipTransform renderTransform = ship.getRenderTransform();
                 final Matrix4dc shipToWorld = renderTransform.getShipToWorld();
                 ship.getActiveChunksSet().forEach((chunkX, chunkZ) -> {
@@ -395,6 +401,12 @@ public final class ShipTerrainMeshCache {
                             chunkX * 16.0, sectionY * 16.0, chunkZ * 16.0, camX, camY, camZ);
                         final PoseStack.Pose pose = scratchPose.last();
 
+                        // Ship fully behind LOD terrain: sections stay baked + kept-alive (above), but
+                        // emit nothing this frame. (Cheaper than drawing, and the only thing that
+                        // actually hides the hull under shaders -- the immediate re-emit path.)
+                        if (shipOccluded) {
+                            continue;
+                        }
                         // Translucent: immediate re-emit (keeps vanilla's per-frame back-to-front sort).
                         for (final Built b : cached.built) {
                             emit(bufferSource.getBuffer(b.type), pose, b);

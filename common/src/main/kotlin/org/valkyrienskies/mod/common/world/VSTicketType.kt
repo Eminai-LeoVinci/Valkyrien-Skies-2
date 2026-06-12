@@ -26,18 +26,38 @@ object VSTicketType {
     /**
      * Ticket for the WORLD-space chunks under an "active" ship (see [org.valkyrienskies.mod.common.util.ShipSettings.keepActive]).
      *
-     * Used by [ShipActivationManager] with radius 1 (level 32 = BLOCK_TICKING) on the real-world
-     * chunks the ship currently overlaps. Unlike [SHIP_CHUNK] these are NOT shipyard chunks, so
-     * vanilla applies normally: level 32 makes the footprint report isPositionTicking, which fixes
-     * the off-centre-helm freeze (the ship's centre chunk staying ticking even when the pilot sits
-     * far from it). NOTE: this does NOT make a far, player-less ship keep moving — vs-core gates ship
-     * physics on player proximity (its own player set), not on chunk-ticking level, so raising the
-     * radius to entity-ticking changed nothing at range. Non-persisted (a plain ticket, not vanilla
-     * /forceload), so it never leaks across restarts; the manager releases stale chunks each tick.
+     * Used by [ShipActivationManager] with radius 2 (level 31 = ENTITY_TICKING) on the real-world
+     * chunks the ship currently overlaps — the same level vanilla /forceload uses. Unlike [SHIP_CHUNK]
+     * these are NOT shipyard chunks, so vanilla applies normally. vs-core only physics-steps an
+     * already-loaded ship while its world chunk reports isPositionTicking, so this ticket is what keeps
+     * a far, player-less active ship moving. radius 1 (level 32, BLOCK_TICKING) was one level too weak:
+     * the 2.4.127 diagnostic caught a stalled ship ticketed=true but ticking=FALSE, so it never reached
+     * a ticking status without the player's chunks loading the area. Non-persisted (a plain ticket, not
+     * vanilla /forceload), so it never leaks across restarts; the manager releases stale chunks each tick.
      */
     @JvmField
     val SHIP_ACTIVE_WORLD: TicketType = TicketType.register(
         "vs_ship_active_world", TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING or TicketType.FLAG_SIMULATION
+    )
+
+    /**
+     * Ticket for a ship's own SHIPYARD chunks (its blocks), placed by [ShipActivationManager] on EVERY
+     * active chunk of an active ship — not just the subset vs-core's watch system tickets.
+     *
+     * vs-core only physics-steps a ship while [org.valkyrienskies.core.impl.api.ServerShipInternal.areVoxelsFullyLoaded]
+     * is true, i.e. NONE of the ship's active shipyard chunks are unloaded (an unloaded active chunk is
+     * added to ShipData.missingLoadedChunks, which gates the step). A large ship spans many shipyard
+     * chunks; the watch system only loads the ones near a watcher, so a big craft's bow/stern chunks
+     * unload and the WHOLE ship freezes (the size-dependent cruise stall — small ships fit in the watch
+     * radius and never lose a chunk). This radius-0 (level 33 FULL) ticket pins them all loaded.
+     *
+     * Deliberately a SEPARATE type from [SHIP_CHUNK] so it doesn't collide with ChunkManagement's
+     * watch-driven SHIP_CHUNK add/remove (a shared type dedupes to one ticket, so an unwatch-remove
+     * would drop the chunk we're trying to keep). The manager releases these as the ship deactivates.
+     */
+    @JvmField
+    val SHIP_ACTIVE_VOXEL: TicketType = TicketType.register(
+        "vs_ship_active_voxel", TicketType.NO_TIMEOUT, TicketType.FLAG_LOADING or TicketType.FLAG_SIMULATION
     )
 
     /**

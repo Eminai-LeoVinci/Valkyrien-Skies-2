@@ -68,6 +68,8 @@ import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
 import org.valkyrienskies.mod.common.assembly.SeamlessChunksManager;
 import org.valkyrienskies.mod.common.entity.ShipMountedToData;
 import org.valkyrienskies.mod.common.render.ShipTerrainMeshCache;
+import org.valkyrienskies.mod.compat.voxy.VoxyOcclusion;
+import org.valkyrienskies.mod.compat.voxy.VoxyPerPixel;
 
 @Mixin(LevelRenderer.class)
 public abstract class MixinLevelRenderer {
@@ -364,9 +366,36 @@ public abstract class MixinLevelRenderer {
             return;
         }
         try {
+            // VS-VOXY-OCCLUSION (2.4.168): read-only whole-ship LOD cull -- now a FALLBACK only. When the
+            // per-pixel depth merge (VoxyPerPixel) is live it occludes ships per-pixel, so the cull stands
+            // down entirely (skip building the set; ships draw and depth-test against the merged LOD).
+            // The cull resumes automatically if per-pixel ever disables itself. Fail-safe: empty set.
+            final java.util.Set<Long> vsLodOccluded;
+            if (VoxyOcclusion.isPresent() && !VoxyPerPixel.isReplacingCull()) {
+                final java.util.Set<Long> occ = new java.util.HashSet<>();
+                final LevelRenderer vsSelf = (LevelRenderer) (Object) this;
+                for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
+                    final net.minecraft.world.phys.AABB vsBox =
+                        VectorConversionsMCKt.toMinecraft(ship.getRenderAABB());
+                    if (VoxyOcclusion.isOccludedByLod(vsSelf, vsBox.minX, vsBox.minY, vsBox.minZ,
+                            vsBox.maxX, vsBox.maxY, vsBox.maxZ)) {
+                        occ.add(ship.getId());
+                    }
+                }
+                vsLodOccluded = occ;
+                if (!occ.isEmpty() && this.valkyrienskies$frameCounter % 60L == 0L) {
+                    VoxyOcclusion.logCulledCount(occ.size());
+                }
+            } else {
+                vsLodOccluded = java.util.Collections.emptySet();
+            }
+
             final CameraRenderState cameraRenderState = levelRenderState.cameraRenderState;
             final Frustum frustum = this.valkyrienskies$mainPassFrustum;
             for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
+                if (vsLodOccluded.contains(ship.getId())) {
+                    continue; // fully behind LOD terrain
+                }
                 // Skip a whole ship's block entities when the ship can't be on screen.
                 if (frustum != null && !frustum.isVisible(VectorConversionsMCKt.toMinecraft(ship.getRenderAABB()))) {
                     continue;
@@ -406,11 +435,14 @@ public abstract class MixinLevelRenderer {
             final boolean useShipMeshCache = ShipTerrainMeshCache.INSTANCE.canUseCache();
             if (useShipMeshCache) {
                 ShipTerrainMeshCache.INSTANCE.renderAll(clientLevel, dispatcher, random, bufferSource,
-                    this.valkyrienskies$mainPassFrustum,
+                    this.valkyrienskies$mainPassFrustum, vsLodOccluded,
                     cameraRenderState.pos.x, cameraRenderState.pos.y, cameraRenderState.pos.z);
             } else {
                 final PoseStack shipPoseStack = new PoseStack();
                 for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
+                    if (vsLodOccluded.contains(ship.getId())) {
+                        continue; // fully behind LOD terrain
+                    }
                     valkyrienskies$renderShip(ship, clientLevel, dispatcher, bufferSource, shipPoseStack, random,
                         cameraRenderState.pos.x, cameraRenderState.pos.y, cameraRenderState.pos.z);
                 }

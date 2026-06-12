@@ -175,13 +175,15 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     private void preTick(final CallbackInfo ci) {
         final Set<VsiPlayer> vsPlayers = playerList.getPlayers().stream()
             .map(VSGameUtilsKt::getPlayerWrapper).collect(Collectors.toCollection(HashSet::new));
-        // Pin a synthetic observer onto every "always active" ship so vs-core's player-proximity
-        // load/physics gate keeps it simulating with no real player nearby. vs-core gates ship
-        // physics on its player set + proximity, NOT on vanilla sim distance or chunk tickets, and
-        // its per-ship forceWatchingShips override is dead code in this build -- so making it think a
-        // player sits on the ship is the only lever. The observer feeds only that gate; nothing is
-        // networked to it (VSFabricNetworking.sendToClient drops non-MinecraftPlayer).
-        vsPlayers.addAll(ShipActivationManager.activeShipObservers(shipWorld));
+        // Pin a synthetic observer (at the ship centre, distance 0) onto every "active" ship --
+        // keepActive, piloted, or one a player is aboard -- so vs-core's player-proximity load/physics
+        // gate keeps it simulating: with no real player nearby (keepActive), and from the centre even
+        // when the only real player stands at the far end of a big craft (the walk-to-the-back freeze).
+        // vs-core gates physics on its player set + proximity, NOT on vanilla sim distance or chunk
+        // tickets, and its per-ship forceWatchingShips override is dead code in this build -- so making
+        // it think a player sits on the ship is the only lever. The observer feeds only that gate;
+        // nothing is networked to it (VSFabricNetworking.sendToClient drops non-MinecraftPlayer).
+        vsPlayers.addAll(ShipActivationManager.activeShipObservers(shipWorld, MinecraftServer.class.cast(this)));
         shipWorld.setPlayers(vsPlayers);
 
         // region Tell the VS world to load new levels, and unload deleted ones

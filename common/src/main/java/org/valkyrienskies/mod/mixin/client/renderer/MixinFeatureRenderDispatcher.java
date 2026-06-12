@@ -1,11 +1,13 @@
 package org.valkyrienskies.mod.mixin.client.renderer;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.valkyrienskies.mod.common.render.ShipTerrainMeshCache;
+import org.valkyrienskies.mod.compat.voxy.VoxyPerPixel;
 
 /**
  * Flush the ship-terrain GPU-buffer draw queue at the correct point in the frame.
@@ -26,8 +28,19 @@ import org.valkyrienskies.mod.common.render.ShipTerrainMeshCache;
 @Mixin(FeatureRenderDispatcher.class)
 public abstract class MixinFeatureRenderDispatcher {
 
+    // Per-pixel LOD occlusion: merge Voxy's LOD depth into the gbuffer BEFORE the hull (which draws
+    // within renderAllFeatures), so the hull depth-tests against LOD. No-op on the shadow pass or when
+    // per-pixel can't run (then the dilation cull in VoxyOcclusion handles it instead).
+    @Inject(method = "renderAllFeatures", at = @At("HEAD"), require = 1)
+    private void valkyrienskies$mergeLodDepthBeforeHull(final CallbackInfo ci) {
+        VoxyPerPixel.beforeHull(Minecraft.getInstance().levelRenderer);
+    }
+
     @Inject(method = "renderAllFeatures", at = @At("TAIL"), require = 1)
     private void valkyrienskies$flushShipGpuDraws(final CallbackInfo ci) {
         ShipTerrainMeshCache.INSTANCE.flushDeferredGpuDraws();
+        // Per-pixel LOD occlusion: selectively restore the gbuffer depth (remove the LOD primer, keep
+        // hull + entities) so the shaderpack's shadow/SSR passes never see LOD -> no shadow glitch.
+        VoxyPerPixel.afterHull(Minecraft.getInstance().levelRenderer);
     }
 }

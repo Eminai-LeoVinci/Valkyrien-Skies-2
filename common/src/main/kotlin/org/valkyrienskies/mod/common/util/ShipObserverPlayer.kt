@@ -24,14 +24,20 @@ import java.util.UUID
  * each tick at the ship's latest centre, so it follows the moving ship.
  */
 class ShipObserverPlayer(
-    shipId: ShipId,
+    private val shipId: ShipId,
     private val dimensionId: DimensionId,
     private val posX: Double,
     private val posY: Double,
     private val posZ: Double,
+    /**
+     * Distinguishes the multiple observers [org.valkyrienskies.mod.common.world.ShipActivationManager]
+     * spreads across one ship's footprint -- it's the grid-cell index, mixed into [uuid] so each cell
+     * is a distinct synthetic player (vs-core dedupes players by uuid).
+     */
+    private val generation: Int = 0,
 ) : VsiPlayer {
 
-    override val uuid: UUID = observerUuid(shipId)
+    override val uuid: UUID = observerUuid(shipId, generation)
 
     override val isAdmin: Boolean get() = false
 
@@ -43,6 +49,11 @@ class ShipObserverPlayer(
 
     override fun getPosition(dest: Vector3d): Vector3d = dest.set(posX, posY, posZ)
 
+    // mountedShip is left null on purpose. VSPhysicsPipelineStage keeps a ship's voxels loaded in Krunch
+    // only within a 3x3x3 chunk box around each player's *getPos()* (a mounted player is instead mapped
+    // onto a single point of its ship). ShipActivationManager spreads MANY of these observers across a
+    // ship's world footprint so their boxes tile the whole hull -- that only works if each observer's box
+    // sits at its own position, so we keep getPlayerState's position = getPos() and mountedShip null.
     override fun getPlayerState(): VsiPlayerState =
         VsiPlayerState(Vector3d(posX, posY, posZ), Vector3d(), dimensionId, null, null)
 
@@ -51,8 +62,12 @@ class ShipObserverPlayer(
     override fun equals(other: Any?): Boolean = other is ShipObserverPlayer && other.uuid == uuid
 
     companion object {
-        /** Stable per-ship UUID in a private namespace, so it never collides with a real player's. */
-        fun observerUuid(shipId: ShipId): UUID =
-            UUID.nameUUIDFromBytes("valkyrienskies:ship-observer:$shipId".toByteArray())
+        /**
+         * Stable per-(ship,generation) UUID in a private namespace, so it never collides with a real
+         * player's. [generation] lets the manager mint a fresh identity for a frozen ship to force a
+         * vs-core watcher re-arrival (see the [generation] ctor param).
+         */
+        fun observerUuid(shipId: ShipId, generation: Int = 0): UUID =
+            UUID.nameUUIDFromBytes("valkyrienskies:ship-observer:$shipId:$generation".toByteArray())
     }
 }
