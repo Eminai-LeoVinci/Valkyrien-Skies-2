@@ -15,6 +15,7 @@ import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -53,6 +54,14 @@ public abstract class MixinGameRenderer {
 
             final float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
             shipWorld.updateRenderTransforms(partialTick);
+
+            // This loop visits every rendered entity EVERY FRAME; with no loaded ships neither the
+            // mounted-to nor the dragged branch can produce a position, so skip it entirely.
+            // postRender only needs to restore what this loop overrode -- handshake via the flag.
+            vs$ranDragInterpolation = shipWorld.getLoadedShips().size() > 0;
+            if (!vs$ranDragInterpolation) {
+                return;
+            }
 
             // Also update entity last tick positions, so that they interpolate correctly
             for (final Entity entity : clientWorld.entitiesForRendering()) {
@@ -133,8 +142,15 @@ public abstract class MixinGameRenderer {
         }
     }
 
+    @Unique
+    private boolean vs$ranDragInterpolation = false;
+
     @Inject(method = "render", at = @At("TAIL"), require = 1)
     private void postRender(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
+        if (!vs$ranDragInterpolation) {
+            return; // preRender skipped the interpolation loop this frame; nothing to restore
+        }
+        vs$ranDragInterpolation = false;
         final ClientLevel clientWorld = minecraft.level;
         if (clientWorld != null) {
             // Restore the entity last tick positions that were replaced during this frame

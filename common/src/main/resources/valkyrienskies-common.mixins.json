@@ -110,6 +110,7 @@
   ],
   "client": [
     "accessors.client.multiplayer.ClientLevelAccessor",
+    "accessors.client.render.FrustumInvoker",
     "accessors.client.render.LevelRendererAccessor",
     "accessors.client.render.OverlayVertexConsumerAccessor",
     "accessors.client.render.RenderTypeAccessor",

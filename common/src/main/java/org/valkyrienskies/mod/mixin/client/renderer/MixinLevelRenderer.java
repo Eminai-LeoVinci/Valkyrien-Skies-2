@@ -105,6 +105,30 @@ public abstract class MixinLevelRenderer {
     @Unique
     private float valkyrienskies$partialTick = 1.0f;
 
+    // Per-ship Voxy LOD-occlusion verdict cache: shipId -> (frameStamp << 1 | occluded). Each
+    // verdict costs a synchronous GPU depth readback, so it is refreshed every few frames (see
+    // VS_LOD_REOCCLUDE_INTERVAL), not every frame.
+    @Unique
+    private final it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap vs$lodVerdictCache = vs$newVerdictCache();
+
+    @Unique
+    private long vs$lodFrameCounter = 0L;
+
+    @Unique
+    private static final long VS_LOD_REOCCLUDE_INTERVAL = 8L;
+
+    @Unique
+    private static it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap vs$newVerdictCache() {
+        final it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap map =
+            new it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap();
+        map.defaultReturnValue(Long.MIN_VALUE);
+        return map;
+    }
+
+    // Reused across frames for ship terrain baking (render thread only).
+    @Unique
+    private final RandomSource vs$shipRenderRandom = RandomSource.create();
+
     // The main camera-pass frustum, captured during pass setup (addMainPass) so it is available when
     // the pass execute lambda later calls submitBlockEntities, where we frustum-cull ship terrain.
     @Unique
@@ -317,21 +341,39 @@ public abstract class MixinLevelRenderer {
             // per-pixel depth merge (VoxyPerPixel) is live it occludes ships per-pixel, so the cull stands
             // down entirely (skip building the set; ships draw and depth-test against the merged LOD).
             // The cull resumes automatically if per-pixel ever disables itself. Fail-safe: empty set.
-            final java.util.Set<Long> vsLodOccluded;
+            //
+            // Each isOccludedByLod call is a synchronous GPU depth readback (a pipeline stall), so the
+            // per-ship verdict is cached and refreshed every few frames instead of every frame. Whole-ship
+            // pop-in latency of a few frames is imperceptible; the stall every frame was not. Intervals
+            // are staggered by ship id so a fleet doesn't re-read on the same frame. The cull only runs
+            // without shaders (per-pixel replaces it under Iris), so no shadow pass consumes these.
+            final it.unimi.dsi.fastutil.longs.LongSet vsLodOccluded;
             if (VoxyOcclusion.isPresent() && !VoxyPerPixel.isReplacingCull()) {
-                final java.util.Set<Long> occ = new java.util.HashSet<>();
+                vs$lodFrameCounter++;
+                final it.unimi.dsi.fastutil.longs.LongOpenHashSet occ =
+                    new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
                 final LevelRenderer vsSelf = (LevelRenderer) (Object) this;
                 for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(clientLevel).getLoadedShips()) {
-                    final net.minecraft.world.phys.AABB vsBox =
-                        VectorConversionsMCKt.toMinecraft(ship.getRenderAABB());
-                    if (VoxyOcclusion.isOccludedByLod(vsSelf, vsBox.minX, vsBox.minY, vsBox.minZ,
-                            vsBox.maxX, vsBox.maxY, vsBox.maxZ)) {
-                        occ.add(ship.getId());
+                    final long shipId = ship.getId();
+                    final long packed = vs$lodVerdictCache.get(shipId);
+                    final boolean occluded;
+                    if (packed != Long.MIN_VALUE
+                        && vs$lodFrameCounter - (packed >>> 1) < VS_LOD_REOCCLUDE_INTERVAL + (shipId & 3L)) {
+                        occluded = (packed & 1L) != 0L;
+                    } else {
+                        final net.minecraft.world.phys.AABB vsBox =
+                            VectorConversionsMCKt.toMinecraft(ship.getRenderAABB());
+                        occluded = VoxyOcclusion.isOccludedByLod(vsSelf, vsBox.minX, vsBox.minY, vsBox.minZ,
+                            vsBox.maxX, vsBox.maxY, vsBox.maxZ);
+                        vs$lodVerdictCache.put(shipId, (vs$lodFrameCounter << 1) | (occluded ? 1L : 0L));
+                    }
+                    if (occluded) {
+                        occ.add(shipId);
                     }
                 }
                 vsLodOccluded = occ;
             } else {
-                vsLodOccluded = java.util.Collections.emptySet();
+                vsLodOccluded = it.unimi.dsi.fastutil.longs.LongSets.EMPTY_SET;
             }
 
             final CameraRenderState cameraRenderState = levelRenderState.cameraRenderState;
@@ -374,7 +416,7 @@ public abstract class MixinLevelRenderer {
             // render-lists, so the see-through holes can't return. Do NOT call endBatch(); the
             // immediate path is flushed by vanilla's following renderAllFeatures()/endBatch().
             final BlockRenderDispatcher dispatcher = this.minecraft.getBlockRenderer();
-            final RandomSource random = RandomSource.create();
+            final RandomSource random = this.vs$shipRenderRandom;
             final MultiBufferSource.BufferSource bufferSource = this.renderBuffers.bufferSource();
             final boolean useShipMeshCache = ShipTerrainMeshCache.INSTANCE.canUseCache();
             if (useShipMeshCache) {

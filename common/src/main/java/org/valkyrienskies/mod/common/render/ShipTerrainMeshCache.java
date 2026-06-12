@@ -17,6 +17,8 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.logging.LogUtils;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -44,6 +46,7 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
@@ -62,6 +65,7 @@ import org.valkyrienskies.core.api.ships.properties.ShipTransform;
 import org.valkyrienskies.mod.common.VSClientGameUtils;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
+import org.valkyrienskies.mod.mixin.accessors.client.render.FrustumInvoker;
 import org.valkyrienskies.mod.mixin.accessors.client.render.RenderTypeAccessor;
 
 /**
@@ -135,8 +139,10 @@ public final class ShipTerrainMeshCache {
     // path on CPU-bound / no-shader / many-ship setups. Also flipped off by a GPU error.
     private static volatile boolean gpuPath = false;
 
-    // Keyed by shipyard section position (disjoint per ship, so globally unique).
-    private final Map<SecPos, CachedSection> sections = new HashMap<>();
+    // Keyed by SectionPos.asLong-packed shipyard section position (disjoint per ship, so globally
+    // unique). Primitive keys: the per-frame walk looks one up per non-air section, and a record
+    // key meant one allocation + boxed hashing per lookup.
+    private final Long2ObjectOpenHashMap<CachedSection> sections = new Long2ObjectOpenHashMap<>();
 
     private long frame;
     private boolean disabled;
@@ -173,9 +179,6 @@ public final class ShipTerrainMeshCache {
     private ShipTerrainMeshCache() {
     }
 
-    private record SecPos(int x, int y, int z) {
-    }
-
     /** One render type's worth of a baked section, decoded into flat primitive arrays (immediate path). */
     private static final class Built {
         final RenderType type;
@@ -184,10 +187,10 @@ public final class ShipTerrainMeshCache {
         final float[] uv;      // 2 per vertex: u, v
         final byte[] color;    // 4 per vertex: r, g, b, a
         final int[] light;     // 1 per vertex: (uv2.u & 0xFFFF) | (uv2.v << 16)
-        final byte[] normal;   // 3 per vertex: nx, ny, nz (signed, /127)
+        final float[] normal;  // 3 per vertex: nx, ny, nz (already /127 at decode -- emit is per frame)
 
         Built(final RenderType type, final int vertexCount, final float[] pos, final float[] uv,
-            final byte[] color, final int[] light, final byte[] normal) {
+            final byte[] color, final int[] light, final float[] normal) {
             this.type = type;
             this.vertexCount = vertexCount;
             this.pos = pos;
@@ -314,7 +317,7 @@ public final class ShipTerrainMeshCache {
      */
     public void renderAll(final ClientLevel level, final BlockRenderDispatcher dispatcher,
         final RandomSource random, final MultiBufferSource.BufferSource bufferSource,
-        final Frustum frustum, final java.util.Set<Long> occludedShipIds,
+        final Frustum frustum, final LongSet occludedShipIds,
         final double camX, final double camY, final double camZ) {
 
         if (disabled) {
@@ -368,7 +371,7 @@ public final class ShipTerrainMeshCache {
                             continue;
                         }
                         final int sectionY = minSectionY + sectionIndex;
-                        final SecPos key = new SecPos(chunkX, sectionY, chunkZ);
+                        final long key = SectionPos.asLong(chunkX, sectionY, chunkZ);
 
                         final boolean visible = isShipSectionVisible(frustum, shipToWorld, chunkX, sectionY, chunkZ);
 
@@ -577,7 +580,10 @@ public final class ShipTerrainMeshCache {
             return true;
         }
         shipToWorld.transformAab(minX, minY, minZ, maxX, maxY, maxZ, cullMin, cullMax);
-        return frustum.isVisible(new AABB(cullMin.x, cullMin.y, cullMin.z, cullMax.x, cullMax.y, cullMax.z));
+        // Direct cubeInFrustum call (isVisible(AABB) is a plain pass-through to it) -- this runs
+        // once per non-air ship section per frame, so skip the per-test AABB allocation.
+        return ((FrustumInvoker) frustum).valkyrienskies$cubeInFrustum(
+            cullMin.x, cullMin.y, cullMin.z, cullMax.x, cullMax.y, cullMax.z);
     }
 
     private static void emit(final VertexConsumer consumer, final PoseStack.Pose pose, final Built mesh) {
@@ -586,7 +592,7 @@ public final class ShipTerrainMeshCache {
         final float[] uv = mesh.uv;
         final byte[] color = mesh.color;
         final int[] light = mesh.light;
-        final byte[] normal = mesh.normal;
+        final float[] normal = mesh.normal;
 
         for (int i = 0; i < count; i++) {
             final int p3 = i * 3;
@@ -598,7 +604,7 @@ public final class ShipTerrainMeshCache {
                 .setColor(color[c4] & 0xFF, color[c4 + 1] & 0xFF, color[c4 + 2] & 0xFF, color[c4 + 3] & 0xFF)
                 .setUv(uv[p2], uv[p2 + 1])
                 .setUv2(l & 0xFFFF, l >>> 16)
-                .setNormal(pose, normal[p3] / 127.0f, normal[p3 + 1] / 127.0f, normal[p3 + 2] / 127.0f);
+                .setNormal(pose, normal[p3], normal[p3 + 1], normal[p3 + 2]);
         }
     }
 
@@ -750,7 +756,7 @@ public final class ShipTerrainMeshCache {
         final float[] uv = new float[count * 2];
         final byte[] color = new byte[count * 4];
         final int[] light = new int[count];
-        final byte[] normal = new byte[count * 3];
+        final float[] normal = new float[count * 3];
 
         for (int i = 0; i < count; i++) {
             final int base = i * stride;
@@ -779,9 +785,10 @@ public final class ShipTerrainMeshCache {
             final int v2 = src.getShort(ll + 2) & 0xFFFF;
             light[i] = u2 | (v2 << 16);
 
-            normal[p3] = src.get(nn);
-            normal[p3 + 1] = src.get(nn + 1);
-            normal[p3 + 2] = src.get(nn + 2);
+            // Pre-divide at bake: emit() replays these every frame for translucents.
+            normal[p3] = src.get(nn) / 127.0f;
+            normal[p3 + 1] = src.get(nn + 1) / 127.0f;
+            normal[p3 + 2] = src.get(nn + 2) / 127.0f;
         }
 
         return new Built(type, count, pos, uv, color, light, normal);
@@ -823,7 +830,7 @@ public final class ShipTerrainMeshCache {
         if (sections.isEmpty()) {
             return;
         }
-        final CachedSection removed = sections.remove(new SecPos(sectionX, sectionY, sectionZ));
+        final CachedSection removed = sections.remove(SectionPos.asLong(sectionX, sectionY, sectionZ));
         if (removed != null) {
             removed.close();
         }
@@ -834,9 +841,9 @@ public final class ShipTerrainMeshCache {
             return;
         }
         final long cutoff = frame - EVICT_AFTER_FRAMES;
-        final Iterator<Map.Entry<SecPos, CachedSection>> it = sections.entrySet().iterator();
+        final Iterator<CachedSection> it = sections.values().iterator();
         while (it.hasNext()) {
-            final CachedSection cs = it.next().getValue();
+            final CachedSection cs = it.next();
             if (cs.lastUsedFrame < cutoff) {
                 cs.close();
                 it.remove();

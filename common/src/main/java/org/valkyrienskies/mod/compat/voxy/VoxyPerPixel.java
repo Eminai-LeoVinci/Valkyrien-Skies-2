@@ -55,6 +55,8 @@ public final class VoxyPerPixel {
     private static boolean glReady = false;
     private static boolean operational = false;  // true once a merge has run; tells the cull to stand down
     private static boolean frameActive = false;  // a merge happened this frame -> afterHull must restore
+    // Voxy merge params resolved by beforeHull, consumed by afterHull in the same frame.
+    private static VoxyOcclusion.MergeParams frameParams;
 
     private static int mergeProg;
     private static int restoreProg;
@@ -233,6 +235,9 @@ public final class VoxyPerPixel {
             GL30C.glBindFramebuffer(GL30C.GL_FRAMEBUFFER, prevFbo);
             GL11C.glViewport(vp[0], vp[1], vp[2], vp[3]);
 
+            // Stash for afterHull: it runs later in this same frame (frameActive handshake) and
+            // needs only these values, so it must not repeat the whole reflective resolve chain.
+            frameParams = mp;
             frameActive = true;
             if (!operational) {
                 operational = true;
@@ -252,7 +257,9 @@ public final class VoxyPerPixel {
         }
         frameActive = false;
         try {
-            final VoxyOcclusion.MergeParams mp = VoxyOcclusion.mainPassMergeParams(lr);
+            // Resolved once in beforeHull this frame (frameActive guarantees it ran and succeeded);
+            // re-resolving here repeated the whole reflective Voxy chain every frame for nothing.
+            final VoxyOcclusion.MergeParams mp = frameParams;
             final int gbufferFbo = VoxyGbufferBridge.gbufferFbo;
             if (mp == null || gbufferFbo <= 0) {
                 return;
