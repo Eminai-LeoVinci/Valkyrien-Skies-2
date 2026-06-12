@@ -39,7 +39,7 @@ public abstract class MixinLevelChunkClientRender {
     @Final
     Level level;
 
-    @Inject(method = "setBlockState", at = @At("TAIL"))
+    @Inject(method = "setBlockState", at = @At("TAIL"), require = 1)
     private void valkyrienskies$invalidateShipMeshOnBlockChange(final BlockPos pos, final BlockState state,
         final int flags, final CallbackInfoReturnable<BlockState> cir) {
         if (!level.isClientSide) {

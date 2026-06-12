@@ -16,7 +16,8 @@ public class MixinAvatarRenderer {
 
     @Inject(
         method = "extractRenderState(Lnet/minecraft/world/entity/Avatar;Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;F)V",
-        at = @At("TAIL")
+        at = @At("TAIL"),
+        require = 1
     )
     private void vs$markShipMountPose(final Avatar avatar, final AvatarRenderState state,
                                       final float partialTick, final CallbackInfo ci) {

@@ -20,7 +20,8 @@ public abstract class MixinPlayerModel extends HumanoidModel<AvatarRenderState> 
 
     @Inject(
         method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V",
-        at = @At("TAIL")
+        at = @At("TAIL"),
+        require = 1
     )
     private void vs$standAtShipMount(final AvatarRenderState state, final CallbackInfo ci) {
         final boolean flag = ((ShipMountPoseRenderState) state).vs$isShipMountStanding();

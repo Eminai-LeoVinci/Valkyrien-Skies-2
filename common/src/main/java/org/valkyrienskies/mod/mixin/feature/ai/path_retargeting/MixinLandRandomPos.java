@@ -35,15 +35,16 @@ public class MixinLandRandomPos {
         at = @At(
             value = "TAIL"
         ),
-        cancellable = true
+        cancellable = true,
+        require = 1
     )
-    private static void postGenerateRandomPosTowardDirection(PathfinderMob pathfinderMob, int i, boolean bl,
+    private static void postGenerateRandomPosTowardDirection(PathfinderMob pathfinderMob, double d, boolean bl,
         BlockPos blockPos, CallbackInfoReturnable<BlockPos> cir) {
         if (cir.getReturnValue() != null) {
             return;
         }
         if (pathfinderMob.level() != null) {
-            final BlockPos blockPos3 = RandomPos.generateRandomPosTowardDirection(pathfinderMob, i, pathfinderMob.getRandom(), blockPos);
+            final BlockPos blockPos3 = RandomPos.generateRandomPosTowardDirection(pathfinderMob, d, pathfinderMob.getRandom(), blockPos);
             AABB checker = new AABB(blockPos3);
             Iterable<LoadedShip> ships = VSGameUtilsKt.getShipObjectWorld(pathfinderMob.level()).getLoadedShips().getIntersecting(VectorConversionsMCKt.toJOML(checker), VSGameUtilsKt.getDimensionId(pathfinderMob.level()));
             if (ships.iterator().hasNext()) {
@@ -63,7 +64,8 @@ public class MixinLandRandomPos {
     }
 
     @WrapOperation(method = "getPosInDirection", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/world/entity/ai/util/RandomPos;generateRandomPos(Lnet/minecraft/world/entity/PathfinderMob;Ljava/util/function/Supplier;)Lnet/minecraft/world/phys/Vec3;"))
+        target = "Lnet/minecraft/world/entity/ai/util/RandomPos;generateRandomPos(Lnet/minecraft/world/entity/PathfinderMob;Ljava/util/function/Supplier;)Lnet/minecraft/world/phys/Vec3;"),
+        require = 1)
     private static Vec3 redirectGetPosInDirection(PathfinderMob arg, Supplier<BlockPos> supplier,
         Operation<Vec3> original) {
         Vec3 result = original.call(arg, supplier);
@@ -73,7 +75,7 @@ public class MixinLandRandomPos {
         return null;
     }
 
-    @Inject(method = "getPos(Lnet/minecraft/world/entity/PathfinderMob;IILjava/util/function/ToDoubleFunction;)Lnet/minecraft/world/phys/Vec3;", at = @At("TAIL"), cancellable = true)
+    @Inject(method = "getPos(Lnet/minecraft/world/entity/PathfinderMob;IILjava/util/function/ToDoubleFunction;)Lnet/minecraft/world/phys/Vec3;", at = @At("TAIL"), cancellable = true, require = 1)
     private static void preGetPos(PathfinderMob pathfinderMob, int i, int j,
         ToDoubleFunction<BlockPos> toDoubleFunction, CallbackInfoReturnable<Vec3> cir) {
         if (cir.getReturnValue() != null) {

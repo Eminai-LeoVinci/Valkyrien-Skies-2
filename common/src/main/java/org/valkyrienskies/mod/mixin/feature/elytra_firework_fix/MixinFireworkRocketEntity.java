@@ -50,7 +50,7 @@ public abstract class MixinFireworkRocketEntity {
     @org.jetbrains.annotations.Nullable
     private LivingEntity attachedToEntity;
 
-    @Inject(method = "tick", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "tick", at = @At("HEAD"), cancellable = true, require = 1)
     private void vs$capClientFirework(final CallbackInfo ci) {
         final FireworkRocketEntity self = (FireworkRocketEntity) (Object) this;
         if (!self.level().isClientSide()) return;

@@ -55,10 +55,13 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
     @Shadow
     private int awaitingTeleportTime;
 
+    // 1.21.11: the fly-kick logic (aboveGroundTickCount vs getMaximumFlyingTicks) moved from
+    // tick() into the new private tickPlayer().
     @ModifyExpressionValue(
         at = @At(value = "FIELD",
             target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;aboveGroundTickCount:I", ordinal = 0),
-        method = "tick"
+        method = "tickPlayer",
+        require = 1
     )
     private int noFlyKick(final int original) {
         if (VSGameConfig.SERVER.getEnableMovementChecks()) {
@@ -73,7 +76,8 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
             value = "INVOKE",
             target = "Lnet/minecraft/world/phys/Vec3;subtract(Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/phys/Vec3;"
         ),
-        method = "handleUseItemOn"
+        method = "handleUseItemOn",
+        require = 1
     )
     private Vec3 skipDistanceCheck2(final Vec3 instance, final Vec3 vec3, final Operation<Vec3> subtract) {
         return VSGameUtilsKt.toWorldCoordinates(player.level(), subtract.call(instance, vec3));
@@ -117,7 +121,7 @@ public abstract class MixinServerGamePacketListenerImpl extends ServerCommonPack
             value = "INVOKE",
             target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;isSingleplayerOwner()Z"
         ),
-        require = 0
+        require = 1
     )
     private boolean shouldSkipMoveCheck2(final ServerGamePacketListenerImpl instance,
         final Operation<Boolean> isSinglePlayerOwner) {

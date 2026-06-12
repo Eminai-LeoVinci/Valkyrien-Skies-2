@@ -46,7 +46,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     /**
      * This mixin stores the [chunkBuilder] object from the constructor. It is used to create new render chunks.
      */
-    @Inject(method = "<init>", at = @At("TAIL"))
+    @Inject(method = "<init>", at = @At("TAIL"), require = 1)
     private void postInit(SectionRenderDispatcher sectionRenderDispatcher, final Level world, final int viewDistance,
         final LevelRenderer worldRenderer, final CallbackInfo callbackInfo) {
 
@@ -56,7 +56,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     /**
      * This mixin creates render chunks for ship chunks.
      */
-    @Inject(method = "setDirty", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "setDirty", at = @At("HEAD"), cancellable = true, require = 1)
     private void preScheduleRebuild(final int x, final int y, final int z, final boolean important,
         final CallbackInfo callbackInfo) {
 
@@ -80,7 +80,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     /**
      * This mixin allows {@link ViewArea} to return the render chunks for ships.
      */
-    @Inject(method = "getRenderSectionAt", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getRenderSectionAt", at = @At("HEAD"), cancellable = true, require = 1)
     private void preGetRenderedChunk(final BlockPos pos,
         final CallbackInfoReturnable<SectionRenderDispatcher.RenderSection> callbackInfoReturnable) {
         final int chunkX = Mth.floorDiv(pos.getX(), 16);
@@ -149,7 +149,7 @@ public class MixinViewAreaVanilla implements IVSViewAreaMethods {
     /**
      * Clear VS ship render chunks so that we don't leak memory
      */
-    @Inject(method = "releaseAllBuffers", at = @At("HEAD"))
+    @Inject(method = "releaseAllBuffers", at = @At("HEAD"), require = 1)
     private void postReleaseAllBuffers(final CallbackInfo ci) {
         for (final Entry<SectionRenderDispatcher.RenderSection[]> entry : vs$shipRenderChunks.long2ObjectEntrySet()) {
             for (final SectionRenderDispatcher.RenderSection renderChunk : entry.getValue()) {

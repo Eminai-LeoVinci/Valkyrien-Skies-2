@@ -35,7 +35,7 @@ public class MixinChunkTracker {
     @Final
     private LongSet loadQueue;
 
-    @Inject(method = "updateMerged", at = @At("HEAD"), cancellable = true, remap = false)
+    @Inject(method = "updateMerged", at = @At("HEAD"), cancellable = true, remap = false, require = 1)
     public void beforeUpdateMerged(final int x, final int z, final CallbackInfo ci) {
         final Level level = Minecraft.getInstance().level;
         if (level == null || !VSGameUtilsKt.isChunkInShipyard(level, x, z)) {

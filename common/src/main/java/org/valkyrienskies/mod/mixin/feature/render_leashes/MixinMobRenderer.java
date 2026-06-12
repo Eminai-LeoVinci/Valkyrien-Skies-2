@@ -15,9 +15,11 @@ import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
 @Mixin(EntityRenderer.class)
 public class MixinMobRenderer {
 
-    // For leashes rendering
-    @WrapOperation(method = "renderLeash", at = @At(value = "INVOKE",
-        target = "Lnet/minecraft/world/entity/Entity;getRopeHoldPosition(F)Lnet/minecraft/world/phys/Vec3;"))
+    // For leashes rendering. 1.21.11: renderLeash is gone; the leash-holder end position is now
+    // computed in extractRenderState (single-rope path), where getRopeHoldPosition is still called.
+    @WrapOperation(method = "extractRenderState", at = @At(value = "INVOKE",
+        target = "Lnet/minecraft/world/entity/Entity;getRopeHoldPosition(F)Lnet/minecraft/world/phys/Vec3;"),
+        require = 1)
     public Vec3 getRopeHoldPosition(final Entity instance, final float partialTicks,
         final Operation<Vec3> getRopeHoldPosition) {
         final Vec3 origVec = getRopeHoldPosition.call(instance, partialTicks);

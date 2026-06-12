@@ -79,7 +79,7 @@ public abstract class MixinRenderSectionManager implements RenderSectionManagerD
     @Unique
     private static final boolean VS_DISABLE_SHIP_TERRAIN_INTEGRATION = true;
 
-    @Inject(at = @At("TAIL"), method = "createTerrainRenderList")
+    @Inject(at = @At("TAIL"), method = "createTerrainRenderList", require = 1)
     private void afterIterateChunks(final Camera camera, final Viewport viewport, final FogParameters fogParameters,
         final int frame, final boolean spectator, final CallbackInfoReturnable<Boolean> cir) {
 
@@ -152,7 +152,7 @@ public abstract class MixinRenderSectionManager implements RenderSectionManagerD
         renderLists = trueRenderLists;
     }
 
-    @Inject(at = @At("TAIL"), method = "resetRenderLists")
+    @Inject(at = @At("TAIL"), method = "resetRenderLists", require = 1)
     private void afterResetLists(final CallbackInfo ci) {
         shipRenderLists.clear();
     }

@@ -33,7 +33,8 @@ public abstract class MixinModel implements ShipMountPoseModel {
 
     @Inject(
         method = "renderToBuffer(Lcom/mojang/blaze3d/vertex/PoseStack;Lcom/mojang/blaze3d/vertex/VertexConsumer;III)V",
-        at = @At("HEAD")
+        at = @At("HEAD"),
+        require = 1
     )
     private void vs$standAtShipMount(final PoseStack poseStack, final VertexConsumer buffer,
         final int light, final int overlay, final int color, final CallbackInfo ci) {

@@ -23,23 +23,24 @@ public class MixinEntityRenderer {
      * <p>
      * Presumably, it is caused by the culling AABB only being updated on a subsequent tick, so we bypass that.
      */
-    @WrapOperation(method = "shouldRender", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;getBoundingBoxForCulling()Lnet/minecraft/world/phys/AABB;"))
-    private AABB redirectAABBConstructor(Entity instance, Operation<AABB> original) {
-        if (instance instanceof IEntityDraggingInformationProvider dragProvider && dragProvider.getDraggingInformation().isEntityBeingDraggedByAShip() && dragProvider.getDraggingInformation().getLastShipStoodOn() != null) {
+    // 1.21.11: getBoundingBoxForCulling moved from Entity to EntityRenderer.getBoundingBoxForCulling(T).
+    @WrapOperation(method = "shouldRender", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/entity/EntityRenderer;getBoundingBoxForCulling(Lnet/minecraft/world/entity/Entity;)Lnet/minecraft/world/phys/AABB;"), require = 1)
+    private AABB redirectAABBConstructor(EntityRenderer<?, ?> instance, Entity entity, Operation<AABB> original) {
+        if (entity instanceof IEntityDraggingInformationProvider dragProvider && dragProvider.getDraggingInformation().isEntityBeingDraggedByAShip() && dragProvider.getDraggingInformation().getLastShipStoodOn() != null) {
             EntityDraggingInformation dragInfo = dragProvider.getDraggingInformation();
-            ClientShip ship = VSGameUtilsKt.getShipObjectWorld((ClientLevel) instance.level()).getAllShips().getById(dragInfo.getLastShipStoodOn());
+            ClientShip ship = VSGameUtilsKt.getShipObjectWorld((ClientLevel) entity.level()).getAllShips().getById(dragInfo.getLastShipStoodOn());
             if (ship == null) {
-                return original.call(instance);
+                return original.call(instance, entity);
             }
             if (dragInfo.getLastShipStoodOn() != null && (dragInfo.getRelativePositionOnShip() != null || dragInfo.getServerRelativePlayerPosition() != null)) {
                 Vector3dc positionToTransform = dragInfo.bestRelativeEntityPosition();
                 if (positionToTransform != null) {
                     Vector3dc transformed = ship.getRenderTransform().getShipToWorld().transformPosition(positionToTransform,
                         new Vector3d());
-                    return instance.getDimensions(instance.getPose()).makeBoundingBox(transformed.x(), transformed.y(), transformed.z()).inflate(0.5D);
+                    return entity.getDimensions(entity.getPose()).makeBoundingBox(transformed.x(), transformed.y(), transformed.z()).inflate(0.5D);
                 }
             }
         }
-        return original.call(instance);
+        return original.call(instance, entity);
     }
 }

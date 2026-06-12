@@ -40,7 +40,7 @@ public abstract class MixinGameRenderer {
     @Final
     private Camera mainCamera;
 
-    @Inject(method = "render", at = @At("HEAD"))
+    @Inject(method = "render", at = @At("HEAD"), require = 1)
     private void preRender(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
         final ClientLevel clientWorld = minecraft.level;
         if (clientWorld != null) {
@@ -133,7 +133,7 @@ public abstract class MixinGameRenderer {
         }
     }
 
-    @Inject(method = "render", at = @At("TAIL"))
+    @Inject(method = "render", at = @At("TAIL"), require = 1)
     private void postRender(DeltaTracker deltaTracker, boolean bl, CallbackInfo ci) {
         final ClientLevel clientWorld = minecraft.level;
         if (clientWorld != null) {
@@ -265,7 +265,7 @@ public abstract class MixinGameRenderer {
     }
     // endregion
 
-    @ModifyReturnValue(method = "getDepthFar", at = @At("RETURN"))
+    @ModifyReturnValue(method = "getDepthFar", at = @At("RETURN"), require = 1)
     public float includeShipsIn(final float originalDepth) {
         // At render distance 5 the vanilla far plane is only ~320 blocks (renderDistanceChunks * 64),
         // which clips distant ships AND their markers -- the real reason ships vanish far sooner than

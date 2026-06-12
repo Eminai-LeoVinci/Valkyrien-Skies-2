@@ -41,7 +41,10 @@ public abstract class MixinSoundEngine {
             target = "Ljava/util/Map;get(Ljava/lang/Object;)Ljava/lang/Object;",
             ordinal = 0
         ),
-        method = "tickNonPaused"
+        // 1.21.11: tickNonPaused was renamed to tickInGameSound; the wrapped
+        // instanceToChannel.get call is still ordinal 0 there.
+        method = "tickInGameSound",
+        require = 1
     )
     private Object redirectGet(final Map<?, ?> instance, final Object obj, final Operation<Object> get) {
         if (obj instanceof final VelocityTickableSoundInstance soundInstance) {

@@ -30,7 +30,7 @@ public abstract class MixinLivingEntity extends Entity {
     /**
      * Fix dismounting dead chairs on ships teleporting entities into the sky
      */
-    @Inject(method = "dismountVehicle", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "dismountVehicle", at = @At("HEAD"), cancellable = true, require = 1)
     private void preDismountVehicle(final Entity entity, final CallbackInfo ci) {
         if ((!this.isRemoved() && entity.isRemoved()) || (this.level().isLoaded(entity.blockPosition()) && this.level().getBlockState(entity.blockPosition()).is(BlockTags.PORTALS))) {
             if (VSGameUtilsKt.isBlockInShipyard(level(), entity.position())) {

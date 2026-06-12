@@ -47,7 +47,8 @@ public class MixinRecipeManager {
     @ModifyVariable(
         method = "apply(Lnet/minecraft/world/item/crafting/RecipeMap;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V",
         at = @At("HEAD"),
-        argsOnly = true
+        argsOnly = true,
+        require = 1
     )
     private RecipeMap vs$applyConfigRecipeOverrides(RecipeMap original) {
         try {

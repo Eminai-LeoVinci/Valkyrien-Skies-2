@@ -63,7 +63,7 @@ public abstract class MixinLivingEntity {
     @Unique
     private Long vs$prevShipRelId = null;
 
-    @Inject(method = "updateWalkAnimation", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "updateWalkAnimation", at = @At("HEAD"), cancellable = true, require = 1)
     private void vs$shipRelativeWalkAnim(float f, CallbackInfo ci) {
         LivingEntity self = (LivingEntity) (Object) this;
 

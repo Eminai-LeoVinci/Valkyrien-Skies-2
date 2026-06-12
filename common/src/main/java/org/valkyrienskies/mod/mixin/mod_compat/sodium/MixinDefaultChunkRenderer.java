@@ -15,7 +15,8 @@ public abstract class MixinDefaultChunkRenderer {
         method = "getVisibleFaces",
         at = @At("HEAD"),
         cancellable = true,
-        remap = false
+        remap = false,
+        require = 1
     )
     private static void cancelBlockFaceCulling(final int originX, final int originY, final int originZ, final int chunkX, final int chunkY, final int chunkZ, final CallbackInfoReturnable<Integer> cir) {
         if(VSGameUtilsKt.isChunkInShipyard(Minecraft.getInstance().level, chunkX, chunkZ))

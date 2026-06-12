@@ -1,13 +1,15 @@
 package org.valkyrienskies.mod.mixin.feature.mass_tooltip;
 
-import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Item.TooltipContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.item.component.TooltipDisplay;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -18,19 +20,26 @@ import org.valkyrienskies.mod.common.config.VSGameConfig;
 import org.valkyrienskies.mod.mixinducks.feature.mass_tooltip.MassTooltipVisibility;
 import oshi.util.tuples.Pair;
 
-@Mixin(BlockItem.class)
-public class MixinBlockItem {
-    @Inject(method = "appendHoverText", at = @At("HEAD"))
+/**
+ * 1.21.11: BlockItem no longer overrides appendHoverText (and the tooltip signature gained
+ * TooltipDisplay + Consumer in place of the line list), so the mass tooltip injects into
+ * Item.appendHoverText with a BlockItem guard.
+ */
+@Mixin(Item.class)
+public class MixinItem {
+    @Inject(method = "appendHoverText", at = @At("HEAD"), require = 1)
     private void ValkyrienSkies$addMassToTooltip(ItemStack itemStack, TooltipContext tooltipContext,
-        List<Component> list, TooltipFlag tooltipFlag, CallbackInfo ci) {
+        TooltipDisplay tooltipDisplay, Consumer<Component> consumer, TooltipFlag tooltipFlag, CallbackInfo ci) {
+        if (!(itemStack.getItem() instanceof BlockItem item)) {
+            return;
+        }
         final MassTooltipVisibility visibility = VSGameConfig.CLIENT.getTooltip().getMassTooltipVisibility();
         if (visibility.isVisible(tooltipFlag)) {
             try {
-                final BlockItem item = (BlockItem) itemStack.getItem();
                 final Double mass =
                     Objects.requireNonNull(BlockStateInfo.INSTANCE.get(item.getBlock().defaultBlockState()))
                         .getFirst();
-                list.add(Component.translatable("tooltip.valkyrienskies.mass")
+                consumer.accept(Component.translatable("tooltip.valkyrienskies.mass")
                     .append(VSGameConfig.CLIENT.getTooltip().getUseImperialUnits() ?
                         getImperialText(mass) : ": " + mass + "kg").withStyle(ChatFormatting.DARK_GRAY));
             } catch (final Exception ignored) {
