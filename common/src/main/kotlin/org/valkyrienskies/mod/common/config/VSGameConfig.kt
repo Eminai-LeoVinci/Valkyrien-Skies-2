@@ -217,8 +217,10 @@ object VSGameConfig {
         }
 
         @ConfigEntry(
-            description = "Moving ships silently mow down soft plants in their path (kelp, seagrass, grass " +
-                "and other replaceable plants) instead of colliding with them. Nothing is dropped."
+            description = "Moving ships silently cut away the kelp their hull physically passes through, " +
+                "instead of leaving it clipped inside the boat. Only the touched kelp goes -- the rest of " +
+                "the strand stays and nothing is dropped. Seagrass and other plants are left alone (they " +
+                "already phase harmlessly through ships)."
         )
         var shipsDestroyPlants = true
 

@@ -233,7 +233,7 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         // Keep "active" ships (keepActive flag / cruising) simulating regardless of the vanilla
         // simulation-distance setting by force-ticking the world chunks under them.
         ShipActivationManager.tick(shipWorld, MinecraftServer.class.cast(this));
-        // Moving ships silently destroy soft plants (kelp/seagrass/grass) in their path.
+        // Moving ships silently cut away the kelp their hull physically touches (no drops, no felling).
         ShipPlantMower.tick(shipWorld, MinecraftServer.class.cast(this));
     }
 
