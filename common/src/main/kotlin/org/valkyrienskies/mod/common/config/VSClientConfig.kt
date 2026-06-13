@@ -26,5 +26,18 @@ object VSClientConfig {
          * there's no point going much past that.
          */
         var shipRenderDistance: Float = 2048.0f
+
+        /**
+         * Zoom-in limit for the ship-mounted third-person camera, as a multiplier on the camera
+         * distance the ship sets from its size. 1.0 = the ship-set baseline; the scroll wheel
+         * can never zoom in closer than this.
+         */
+        var shipCameraZoomMin: Double = 1.0
+
+        /**
+         * Zoom-out limit for the ship-mounted third-person camera (scroll wheel while the ship
+         * view is active). 2.0 = up to twice the ship-set camera distance.
+         */
+        var shipCameraZoomMax: Double = 2.0
     }
 }

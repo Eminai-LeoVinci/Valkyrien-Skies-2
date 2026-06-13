@@ -197,6 +197,9 @@ public abstract class MixinGameRenderer {
     @org.spongepowered.asm.mixin.Unique
     private void valkyrienskies$applyShipMountCamera(final DeltaTracker deltaTracker) {
         ((IVSCamera) this.mainCamera).resetShipMountedRenderTransform();
+        // Recomputed authoritatively each frame: only the third-person ship-mounted paths below
+        // set this true, so the scroll-zoom handler keys off exactly when the zoom is applied.
+        org.valkyrienskies.mod.client.ShipCameraZoom.setShipCameraActive(false);
 
         final ClientLevel clientLevel = this.minecraft.level;
         final LocalPlayer localPlayer = this.minecraft.player;
@@ -255,6 +258,8 @@ public abstract class MixinGameRenderer {
             if (cameraType != CameraType.THIRD_PERSON_FRONT) {
                 return;
             }
+            // Immersive ship third-person view active -> scroll wheel zooms this camera.
+            org.valkyrienskies.mod.client.ShipCameraZoom.setShipCameraActive(true);
             ((IVSCamera) this.mainCamera).setupWithShipMounted(
                 clientLevel,
                 cameraEntity,
@@ -269,6 +274,8 @@ public abstract class MixinGameRenderer {
 
         // Sitting helm (or non-helm passenger): preserve original VS2 behavior.
         final boolean thirdPerson = !cameraType.isFirstPerson();
+        // The pullback (and thus scroll-zoom) only exists in third person.
+        org.valkyrienskies.mod.client.ShipCameraZoom.setShipCameraActive(thirdPerson);
         ((IVSCamera) this.mainCamera).setupWithShipMounted(
             clientLevel,
             cameraEntity,

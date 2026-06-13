@@ -82,10 +82,12 @@ object RecipeOverrides {
                 }
                 if (!specEl.isJsonObject) continue
                 val spec = specEl.asJsonObject
-                if (spec.get("remove")?.asBoolean == true) {
-                    removals.add(id); continue
-                }
                 try {
+                    // Inside the try: a malformed "remove" value (object/array/null) throws from
+                    // asBoolean and must skip just this entry, not abort the whole file.
+                    if (spec.get("remove")?.asBoolean == true) {
+                        removals.add(id); continue
+                    }
                     overrides[id] = toStandardRecipe(spec)
                 } catch (e: Exception) {
                     logger.warn("Skipping malformed recipe override '" + id + "': " + e.message)

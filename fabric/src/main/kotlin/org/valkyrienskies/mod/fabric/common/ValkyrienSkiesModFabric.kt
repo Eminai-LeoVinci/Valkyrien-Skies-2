@@ -11,6 +11,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.CommonLifecycleEvents
 import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper
 import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.client.CameraType
 import net.minecraft.client.renderer.entity.EntityRendererProvider.Context
 import net.minecraft.commands.synchronization.SingletonArgumentInfo
 import net.minecraft.core.Registry
@@ -31,6 +32,7 @@ import net.minecraft.world.item.Item
 import net.minecraft.world.item.Item.Properties
 import net.minecraft.world.level.block.Block
 import org.valkyrienskies.mod.client.EmptyRenderer
+import org.valkyrienskies.mod.client.ShipCameraZoom
 import fuzs.forgeconfigapiport.fabric.api.neoforge.v4.NeoForgeConfigRegistry
 import fuzs.forgeconfigapiport.fabric.api.neoforge.v4.NeoForgeModConfigEvents
 import net.neoforged.fml.config.ModConfig
@@ -267,6 +269,23 @@ class ValkyrienSkiesModFabric : ModInitializer {
                     false
                 )
             }
+        }
+
+        // Always drop back to first person when the player dismounts a ship mount (helm seat),
+        // whatever camera the ship view was in, and reset the scroll-zoom for the next mount.
+        // Dismounts are server-driven (sneak poll, helm broken, seat killed), so the client
+        // detects them as a falling edge on the vehicle field.
+        var wasRidingShipMount = false
+        ClientTickEvents.END_CLIENT_TICK.register { client ->
+            val player = client.player
+            val riding = player?.vehicle is ShipMountingEntity
+            if (wasRidingShipMount && !riding) {
+                ShipCameraZoom.reset()
+                if (player != null && !client.options.cameraType.isFirstPerson) {
+                    client.options.cameraType = CameraType.FIRST_PERSON
+                }
+            }
+            wasRidingShipMount = riding
         }
     }
 

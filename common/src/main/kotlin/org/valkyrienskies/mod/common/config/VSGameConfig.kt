@@ -188,6 +188,21 @@ object VSGameConfig {
             @ConfigEntry(description = "Vertical bob damping; higher = calmer, prevents runaway oscillation.")
             var damping = 3.0
 
+            @ConfigEntry(
+                description = "Ship footprint (longest horizontal side, blocks) at which vertical heave starts " +
+                    "to attenuate. Smaller ships bob at full height; pitch/roll/sway are never attenuated."
+            )
+            var heaveAttenuationStartSize = 24.0
+
+            @ConfigEntry(description = "Ship footprint (blocks) at which vertical heave reaches its minimum scale.")
+            var heaveAttenuationEndSize = 96.0
+
+            @ConfigEntry(
+                description = "Heave multiplier for ships at/above heaveAttenuationEndSize (0..1). Bigger ships " +
+                    "ride the same waves but rise/fall less and respond more slowly, like a heavy hull should."
+            )
+            var heaveAttenuationMinScale = 0.35
+
             @ConfigEntry(description = "Hull sample grid per axis (NxN). Higher = smoother pitch/roll, slightly more CPU.")
             var sampleGrid = 3
 
@@ -201,6 +216,11 @@ object VSGameConfig {
             var offsetZ = 0.0
         }
 
+        @ConfigEntry(
+            description = "Moving ships silently mow down soft plants in their path (kelp, seagrass, grass " +
+                "and other replaceable plants) instead of colliding with them. Nothing is dropped."
+        )
+        var shipsDestroyPlants = true
 
         @ConfigEntry(
             description = "By default, the vanilla server prevents block interacts past a certain distance " +

@@ -381,7 +381,12 @@ object MassDatapackResolver : BlockStateInfoProvider {
             if (blockState.isAir) {
                 vsBlockState = vsCore.blockTypes.airState
             } else {
-                vsBlockState = if (blockState.liquid()) { //TODO: This is also deprecated. I could check if the blockState is wet and not waterlogged but couldn't be sure if that's what this is for.
+                // Inherently-fluid plants with no collision shape (kelp, kelp_plant, seagrass,
+                // tall_seagrass) must register liquid-only: a VsiBlockState with ANY SolidState --
+                // even an empty-box one -- is solid-family to krunch and stops ships dead.
+                val waterPlant = !blockState.fluidState.isEmpty &&
+                    blockState.getCollisionShape(dummyBlockGetter, BlockPos.ZERO).isEmpty
+                vsBlockState = if (blockState.liquid() || waterPlant) { //TODO: liquid() is also deprecated. I could check if the blockState is wet and not waterlogged but couldn't be sure if that's what this is for.
                     VsiBlockState(null, getFluidState(blockState.fluidState, map[BuiltInRegistries.BLOCK.getKey(blockState.block)], true))
                 } else {
                     val voxelShape: VoxelShape

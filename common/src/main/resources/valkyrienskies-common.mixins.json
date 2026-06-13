@@ -118,6 +118,7 @@
     "accessors.client.world.ClientChunkCacheStorageAccessor",
     "client.MixinCamera",
     "client.MixinMinecraft",
+    "client.MixinMouseHandler",
     "client.platform.MixinFramerateLimitTracker",
     "client.gui.screens.MixinConnectScreen",
     "client.multiplayer.MixinClientPacketListener",

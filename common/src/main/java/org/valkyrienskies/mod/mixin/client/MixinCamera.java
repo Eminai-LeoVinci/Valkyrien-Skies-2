@@ -25,6 +25,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.valkyrienskies.core.api.ships.ClientShip;
 import org.valkyrienskies.core.api.ships.properties.ShipTransform;
 import org.valkyrienskies.mod.client.IVSCamera;
+import org.valkyrienskies.mod.client.ShipCameraZoom;
 import org.valkyrienskies.mod.common.world.RaycastUtilsKt;
 
 @Mixin(Camera.class)
@@ -110,6 +111,10 @@ public abstract class MixinCamera implements IVSCamera {
             double dist = ((boundingBox.lengthX() + boundingBox.lengthY() + boundingBox.lengthZ()) / 3.0) * 1.15;
 
             dist = dist > 5 ? dist : 5;
+
+            // Player scroll-zoom on top of the ship-set baseline (1.0 = baseline, no zoom-in past
+            // it). Applied before the raycast clip below so zooming out never goes through terrain.
+            dist *= ShipCameraZoom.getMultiplier();
 
             // Camera.level is always the ClientLevel here (a Level).
             final double maxZoom =

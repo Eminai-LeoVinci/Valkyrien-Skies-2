@@ -53,6 +53,7 @@ import org.valkyrienskies.mod.common.util.VSLevelChunk;
 import org.valkyrienskies.mod.common.util.VSServerLevel;
 import org.valkyrienskies.mod.common.world.ChunkManagement;
 import org.valkyrienskies.mod.common.world.ShipActivationManager;
+import org.valkyrienskies.mod.common.world.ShipPlantMower;
 import org.valkyrienskies.mod.compat.LoadedMods;
 import org.valkyrienskies.mod.compat.Weather2Compat;
 import org.valkyrienskies.mod.util.KrunchSupport;
@@ -232,6 +233,8 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         // Keep "active" ships (keepActive flag / cruising) simulating regardless of the vanilla
         // simulation-distance setting by force-ticking the world chunks under them.
         ShipActivationManager.tick(shipWorld, MinecraftServer.class.cast(this));
+        // Moving ships silently destroy soft plants (kelp/seagrass/grass) in their path.
+        ShipPlantMower.tick(shipWorld, MinecraftServer.class.cast(this));
     }
 
     @Shadow

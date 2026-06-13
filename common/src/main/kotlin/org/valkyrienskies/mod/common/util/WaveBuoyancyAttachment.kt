@@ -43,6 +43,10 @@ class WaveBuoyancyAttachment : ShipPhysicsListener {
     @JsonIgnore
     private val scratchWorldPos = Vector3d()
 
+    // Per-point wave deviations cached between the two passes (sampleGrid is clamped to 8).
+    @JsonIgnore
+    private val scratchDeviations = DoubleArray(64)
+
     override fun physTick(physShip: PhysShip, physLevel: PhysLevel) {
         if (disabled) return
         val cfg = VSGameConfig.SERVER.OceanWaves
@@ -74,6 +78,39 @@ class WaveBuoyancyAttachment : ShipPhysicsListener {
             val stiffness = cfg.stiffness
             val damping = cfg.damping
 
+            // Big ships heave less and more slowly: attenuate the common-mode (average) wave
+            // forcing by hull footprint. The differential part -- what tilts the ship into pitch
+            // and roll -- stays at full strength, so only the up/down ride height calms down.
+            // (Same forcing frequency, weaker amplitude against unchanged damping = the slower,
+            // smaller response of a heavy hull; no per-ship wave clock, so the visible shader
+            // swell stays in sync.)
+            val footprint = maxOf(maxX - minX, maxZ - minZ)
+            val heaveStart = cfg.heaveAttenuationStartSize
+            val heaveEnd = cfg.heaveAttenuationEndSize.coerceAtLeast(heaveStart + 1e-9)
+            val heaveMin = cfg.heaveAttenuationMinScale.coerceIn(0.0, 1.0)
+            val t = ((footprint - heaveStart) / (heaveEnd - heaveStart)).coerceIn(0.0, 1.0)
+            val heaveScale = 1.0 - (1.0 - heaveMin) * t * t * (3.0 - 2.0 * t)
+
+            // Pass 1: sample the wave field once per grid point and accumulate the average.
+            var deviationSum = 0.0
+            for (ix in 0 until n) {
+                for (iz in 0 until n) {
+                    val fx = if (n == 1) 0.5 else ix.toDouble() / (n - 1)
+                    val fz = if (n == 1) 0.5 else iz.toDouble() / (n - 1)
+                    val mx = minX + (maxX - minX) * fx
+                    val mz = minZ + (maxZ - minZ) * fz
+
+                    val worldPos = shipToWorld.transformPosition(mx, midY, mz, scratchWorldPos)
+
+                    // Wave deviation from mean sea level at this point's world XZ.
+                    val deviation = OceanWaveField.height(worldPos.x, worldPos.z)
+                    scratchDeviations[ix * n + iz] = deviation
+                    deviationSum += deviation
+                }
+            }
+            val deviationAvg = deviationSum / (n * n)
+
+            // Pass 2: apply forces with the heave (average) component attenuated.
             for (ix in 0 until n) {
                 for (iz in 0 until n) {
                     val fx = if (n == 1) 0.5 else ix.toDouble() / (n - 1)
@@ -84,15 +121,15 @@ class WaveBuoyancyAttachment : ShipPhysicsListener {
                     val modelPos = scratchModelPos.set(mx, midY, mz)
                     val worldPos = shipToWorld.transformPosition(mx, midY, mz, scratchWorldPos)
 
-                    // Wave deviation from mean sea level at this point's world XZ.
-                    val deviation = OceanWaveField.height(worldPos.x, worldPos.z)
+                    val deviation = scratchDeviations[ix * n + iz]
+                    val forcing = deviationAvg * heaveScale + (deviation - deviationAvg)
 
                     // Vertical velocity at this point = vel.y + (omega x r).y, r = worldPos - center.
                     val rx = worldPos.x - center.x()
                     val rz = worldPos.z - center.z()
                     val pointVelY = vel.y() + (omega.z() * rx - omega.x() * rz)
 
-                    val force = (deviation * stiffness - pointVelY * damping) * pointMass
+                    val force = (forcing * stiffness - pointVelY * damping) * pointMass
                     if (force.isFinite()) {
                         physShip.applyWorldForceToModelPos(Vector3d(0.0, force, 0.0), modelPos)
                     }
