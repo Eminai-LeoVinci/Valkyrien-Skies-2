@@ -211,6 +211,23 @@ object RecipeOverrides {
     private fun s(id: String): JsonElement = JsonPrimitive(id)
     private fun none(): JsonElement = JsonPrimitive("")
 
+    /** A slot accepting any one of several items (interchangeable alternatives). */
+    private fun anyOf(vararg ids: String): JsonElement =
+        JsonArray().apply { ids.forEach { add(JsonPrimitive(it)) } }
+
+    /** Any glass pane, coloured or not (the engine doesn't care which). */
+    private fun anyGlassPane(): JsonElement = anyOf(
+        "minecraft:glass_pane",
+        "minecraft:white_stained_glass_pane", "minecraft:orange_stained_glass_pane",
+        "minecraft:magenta_stained_glass_pane", "minecraft:light_blue_stained_glass_pane",
+        "minecraft:yellow_stained_glass_pane", "minecraft:lime_stained_glass_pane",
+        "minecraft:pink_stained_glass_pane", "minecraft:gray_stained_glass_pane",
+        "minecraft:light_gray_stained_glass_pane", "minecraft:cyan_stained_glass_pane",
+        "minecraft:purple_stained_glass_pane", "minecraft:blue_stained_glass_pane",
+        "minecraft:brown_stained_glass_pane", "minecraft:green_stained_glass_pane",
+        "minecraft:red_stained_glass_pane", "minecraft:black_stained_glass_pane"
+    )
+
     private fun shaped(slots: List<JsonElement>, result: String, count: Int, group: String? = null): JsonObject =
         JsonObject().apply {
             addProperty("type", "shaped")
@@ -233,20 +250,6 @@ object RecipeOverrides {
             if (group != null) addProperty("group", group)
         }
 
-    private fun addBalloonRing(root: JsonObject, id: String, material: JsonElement, count: Int) {
-        root.add(
-            "vs_eureka:$id",
-            shaped(
-                listOf(
-                    none(), material, none(),
-                    material, none(), material,
-                    none(), material, none()
-                ),
-                "vs_eureka:balloon", count, "balloons"
-            )
-        )
-    }
-
     private fun defaultConfig(): JsonObject {
         val root = JsonObject()
         root.addProperty(
@@ -257,42 +260,45 @@ object RecipeOverrides {
                 "\"remove\" to disable it. Edit then /reload."
         )
 
-        // Ship helm, one per wood:  / O /   O g O   / _ /   (/=stick, O=wood fence, g=gold, _=wood slab)
+        // Ship helm, one per wood:  B F B   F g F   L h L
+        // (B=iron bars, F=wood fence [picks the wood type — all three must match], g=gold ingot,
+        //  L=lodestone, h=heart of the sea)
         for (w in SHIP_HELM_WOODS) {
             root.add(
                 "vs_eureka:${w}_ship_helm",
                 shaped(
                     listOf(
-                        s("minecraft:stick"), s("minecraft:${w}_fence"), s("minecraft:stick"),
+                        s("minecraft:iron_bars"), s("minecraft:${w}_fence"), s("minecraft:iron_bars"),
                         s("minecraft:${w}_fence"), s("minecraft:gold_ingot"), s("minecraft:${w}_fence"),
-                        s("minecraft:stick"), s("minecraft:${w}_slab"), s("minecraft:stick")
+                        s("minecraft:lodestone"), s("minecraft:heart_of_the_sea"), s("minecraft:lodestone")
                     ),
                     "vs_eureka:${w}_ship_helm", 1, "ship_helm"
                 )
             )
         }
 
-        // Engine:  # # #   i B G   S S S   (#=stone, i=iron ingot, B=blast furnace, G=glass pane, S=smooth stone)
+        // Engine:  S S S   F R G   I I T
+        // (S=smooth stone, F=blast furnace, R=any lightning rod, G=any glass pane, I=iron block, T=iron trapdoor)
         root.add(
             "vs_eureka:engine",
             shaped(
                 listOf(
-                    s("minecraft:stone"), s("minecraft:stone"), s("minecraft:stone"),
-                    s("minecraft:iron_ingot"), s("minecraft:blast_furnace"), s("minecraft:glass_pane"),
-                    s("minecraft:smooth_stone"), s("minecraft:smooth_stone"), s("minecraft:smooth_stone")
+                    s("minecraft:smooth_stone"), s("minecraft:smooth_stone"), s("minecraft:smooth_stone"),
+                    s("minecraft:blast_furnace"), s("#minecraft:lightning_rods"), anyGlassPane(),
+                    s("minecraft:iron_block"), s("minecraft:iron_block"), s("minecraft:iron_trapdoor")
                 ),
                 "vs_eureka:engine", 1
             )
         )
 
-        // Floater = 16:  _ # _   # P #   _ # _   (#=string, P=any planks)
+        // Floater = 16:  W B W   B _ B   W B W   (W=any wooden slab, B=barrel)
         root.add(
             "vs_eureka:floater",
             shaped(
                 listOf(
-                    none(), s("minecraft:string"), none(),
-                    s("minecraft:string"), s("#minecraft:planks"), s("minecraft:string"),
-                    none(), s("minecraft:string"), none()
+                    s("#minecraft:wooden_slabs"), s("minecraft:barrel"), s("#minecraft:wooden_slabs"),
+                    s("minecraft:barrel"), none(), s("minecraft:barrel"),
+                    s("#minecraft:wooden_slabs"), s("minecraft:barrel"), s("#minecraft:wooden_slabs")
                 ),
                 "vs_eureka:floater", 16
             )
@@ -324,11 +330,19 @@ object RecipeOverrides {
             )
         )
 
-        // Base balloons (ring  _ # _   # _ #   _ # _  -> vs_eureka:balloon), one per material.
-        addBalloonRing(root, "balloon_membrane", s("minecraft:phantom_membrane"), 32)
-        addBalloonRing(root, "balloon_leather", s("minecraft:leather"), 4)
-        addBalloonRing(root, "balloon_paper", s("minecraft:paper"), 2)
-        addBalloonRing(root, "balloon_wool", s("#minecraft:wool"), 4)
+        // Balloon = 8:  L M L   M N M   L M L
+        // (L=leather, M=phantom membrane, N=nether star) -- the single, Nether-Star-gated balloon recipe.
+        root.add(
+            "vs_eureka:balloon",
+            shaped(
+                listOf(
+                    s("minecraft:leather"), s("minecraft:phantom_membrane"), s("minecraft:leather"),
+                    s("minecraft:phantom_membrane"), s("minecraft:nether_star"), s("minecraft:phantom_membrane"),
+                    s("minecraft:leather"), s("minecraft:phantom_membrane"), s("minecraft:leather")
+                ),
+                "vs_eureka:balloon", 8, "balloons"
+            )
+        )
 
         // Coloured balloons: shapeless  (any balloon) + that dye -> that colour.
         for (c in BALLOON_COLORS) {
