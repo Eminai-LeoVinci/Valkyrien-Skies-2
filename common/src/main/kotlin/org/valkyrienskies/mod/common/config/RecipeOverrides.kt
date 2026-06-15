@@ -228,27 +228,27 @@ object RecipeOverrides {
         "minecraft:red_stained_glass_pane", "minecraft:black_stained_glass_pane"
     )
 
-    private fun shaped(slots: List<JsonElement>, result: String, count: Int, group: String? = null): JsonObject =
+    // Single slot-writer for both recipe types. Empty slots MUST serialize as the empty string "";
+    // a shaped/shapeless split here previously let padding slots serialize as a JSON boolean, which
+    // made every shapeless recipe fail to build ("Unknown registry key ... minecraft:false").
+    private fun recipeJson(type: String, slots: List<JsonElement>, result: String, count: Int, group: String?): JsonObject =
         JsonObject().apply {
-            addProperty("type", "shaped")
+            addProperty("type", type)
             add("slots", JsonArray().apply { slots.forEach { add(it) } })
             addProperty("result", result)
             addProperty("count", count)
             if (group != null) addProperty("group", group)
         }
 
-    private fun shapeless(ingredients: List<JsonElement>, result: String, count: Int, group: String? = null): JsonObject =
-        JsonObject().apply {
-            addProperty("type", "shapeless")
-            // 'slots' must be exactly 9; pad the unused entries (empties are ignored for shapeless).
-            add("slots", JsonArray().apply {
-                ingredients.forEach { add(it) }
-                repeat(9 - ingredients.size) { add(none()) }
-            })
-            addProperty("result", result)
-            addProperty("count", count)
-            if (group != null) addProperty("group", group)
-        }
+    private fun shaped(slots: List<JsonElement>, result: String, count: Int, group: String? = null): JsonObject =
+        recipeJson("shaped", slots, result, count, group)
+
+    private fun shapeless(ingredients: List<JsonElement>, result: String, count: Int, group: String? = null): JsonObject {
+        // 'slots' must be exactly 9; pad the unused entries with "" (ignored for shapeless).
+        val slots = ingredients.toMutableList()
+        while (slots.size < 9) slots.add(none())
+        return recipeJson("shapeless", slots, result, count, group)
+    }
 
     private fun defaultConfig(): JsonObject {
         val root = JsonObject()
@@ -291,7 +291,7 @@ object RecipeOverrides {
             )
         )
 
-        // Floater = 16:  W B W   B _ B   W B W   (W=any wooden slab, B=barrel)
+        // Floater = 4:  W B W   B _ B   W B W   (W=any wooden slab, B=barrel)
         root.add(
             "vs_eureka:floater",
             shaped(
@@ -300,7 +300,7 @@ object RecipeOverrides {
                     s("minecraft:barrel"), none(), s("minecraft:barrel"),
                     s("#minecraft:wooden_slabs"), s("minecraft:barrel"), s("#minecraft:wooden_slabs")
                 ),
-                "vs_eureka:floater", 16
+                "vs_eureka:floater", 4
             )
         )
 
