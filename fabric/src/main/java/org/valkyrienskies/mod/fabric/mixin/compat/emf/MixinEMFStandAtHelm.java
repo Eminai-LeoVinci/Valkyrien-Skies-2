@@ -3,6 +3,7 @@ package org.valkyrienskies.mod.fabric.mixin.compat.emf;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -19,10 +20,19 @@ import org.valkyrienskies.mod.mixinducks.client.render.ShipMountPoseRenderState;
  * helmsman renders seated even though VS2 already poses the vanilla model standing. (This is why
  * every vanilla-side fix failed against FA: EMF draws its own geometry and never reads our writes.)
  *
- * <p>Here we force {@code is_riding} to false for exactly the helm rider -- the player whose
- * AvatarRenderState carries the {@link ShipMountPoseRenderState} standing flag (set in
- * MixinAvatarRenderer) -- so FA plays its normal standing/idle animation at the wheel. Every other
- * rider (boats, mounts, other players) is untouched.
+ * <p>We force this for exactly the helm rider -- the player whose AvatarRenderState carries the
+ * {@link ShipMountPoseRenderState} standing flag (set in MixinAvatarRenderer). Every other rider
+ * (boats, mounts, other players) is untouched. Two overrides are needed:
+ * <ul>
+ *   <li>{@code isRiding() = false} -- so FA drops the seated pose and stands the helmsman at the wheel.</li>
+ *   <li>{@code isOnGround() = true} -- because forcing is_riding false re-enables FA's fall/jump/land
+ *       detection (gated on {@code !is_riding && !is_on_ground}). The ship physically carries the rider,
+ *       so their world Y keeps shifting; FA reads that as endless micro-falls and replays its
+ *       landing-squat (knee-bend), producing the "helmsman bobs up and down whenever the ship has
+ *       momentum" issue. Reporting the rider as firmly on the ground keeps in_air/falling/jumping and
+ *       the landing-squat at zero, so the model just stands. (Limb-swing is naturally zero for a
+ *       mounted entity, so no walk/run animation plays -- confirmed by instrumentation.)</li>
+ * </ul>
  *
  * <p>String target + shadow stub on purpose: VS2's EMF compile dependency is a stale 1.20.1 build
  * that predates this render-state API, but the installed runtime (3.2.x for 1.21.11) has it. A
@@ -36,12 +46,24 @@ public abstract class MixinEMFStandAtHelm {
         throw new AssertionError();
     }
 
+    @Unique
+    private static boolean vs$isStandingHelmRider() {
+        final EntityRenderState state = getEntityRenderState();
+        return state instanceof ShipMountPoseRenderState
+            && ((ShipMountPoseRenderState) state).vs$isShipMountStanding();
+    }
+
     @Inject(method = "isRiding", at = @At("HEAD"), cancellable = true)
     private static void vs$standAtShipHelm(final CallbackInfoReturnable<Boolean> cir) {
-        final EntityRenderState state = getEntityRenderState();
-        if (state instanceof ShipMountPoseRenderState
-            && ((ShipMountPoseRenderState) state).vs$isShipMountStanding()) {
+        if (vs$isStandingHelmRider()) {
             cir.setReturnValue(false);
+        }
+    }
+
+    @Inject(method = "isOnGround", at = @At("HEAD"), cancellable = true)
+    private static void vs$onGroundAtShipHelm(final CallbackInfoReturnable<Boolean> cir) {
+        if (vs$isStandingHelmRider()) {
+            cir.setReturnValue(true);
         }
     }
 }
