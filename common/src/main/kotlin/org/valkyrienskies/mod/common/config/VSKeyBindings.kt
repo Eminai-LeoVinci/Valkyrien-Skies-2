@@ -23,11 +23,6 @@ object VSKeyBindings {
     val shipDown = register("key.valkyrienskies.ship_down", GLFW.GLFW_KEY_V, "category.valkyrienskies.driving")
     val shipCruise = register("key.valkyrienskies.ship_cruise", GLFW.GLFW_KEY_C, "category.valkyrienskies.driving")
 
-    // 2.4.116: toggle the persistent-GPU-buffer ship-terrain render path vs the immediate re-emit
-    // path (ShipTerrainMeshCache.toggleGpuPath). UNBOUND by default -- bind it in Controls -- so a
-    // shaderpack/visual regression on the GPU path can be reverted instantly without a restart.
-    val shipGpuRender = register("key.valkyrienskies.ship_gpu_render", GLFW.GLFW_KEY_UNKNOWN, "category.valkyrienskies.rendering")
-
     // val shipForward = register("key.valkyrienskies.ship_forward", 87, "category.valkyrienskies.driving")
     // val shipBack = register("key.valkyrienskies.ship_back", 83, "category.valkyrienskies.driving")
     // val shipLeft = register("key.valkyrienskies.ship_left", 65, "category.valkyrienskies.driving")

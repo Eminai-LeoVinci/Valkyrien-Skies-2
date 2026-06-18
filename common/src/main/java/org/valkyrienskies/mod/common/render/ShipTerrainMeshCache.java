@@ -81,16 +81,16 @@ import org.valkyrienskies.mod.mixin.accessors.client.render.RenderTypeAccessor;
  * shade (so shaders work and the see-through holes can't return; it never touches Sodium's terrain
  * render-lists), and vanilla flushes it at the correct point in the frame.
  * <p>
- * An EXPERIMENTAL, opt-in GPU path (default OFF, toggled by keybind -> {@link #toggleGpuPath()}) instead
- * uploads solid/cutout/tripwire geometry once into a persistent {@link GpuBuffer} and redraws it each
- * frame with only a per-section model-view uniform changing -- no per-vertex CPU work (~2x cheaper on
- * CPU). It mirrors vanilla {@code RenderType.draw} exactly. Its limitation: ship terrain is drawn from
- * the submit-phase injection point (the dedicated frame-graph pass that would be the correct draw point
- * is disabled, as it corrupts world terrain under Iris). Drawing immediately there is fine WITHOUT
- * shaders, but under Iris the render-target override isn't bound at submit time, so the ship renders
- * only partially -- hence the GPU path stays opt-in and the immediate path is the default. Translucent
- * (glass, water) always uses the immediate path regardless, since it needs vanilla's per-frame
- * back-to-front sort to blend correctly.
+ * The GPU path (always on; it self-disables only on a GPU error) instead uploads solid/cutout/tripwire
+ * geometry once into a persistent {@link GpuBuffer} and redraws it each frame with only a per-section
+ * model-view uniform changing -- no per-vertex CPU work. Under a shaderpack it draws through Iris's
+ * gbuffer terrain program (geometry repacked into Iris's TERRAIN vertex format and drawn via
+ * {@link ShipTerrainIrisPipeline}'s assigned pipelines), which eliminates the per-frame CPU re-emit that
+ * otherwise costs ~7 ms/frame with a hull in view; without shaders it draws through the vanilla
+ * moving-block pipeline. The flush is deferred to renderAllFeatures TAIL (MixinFeatureRenderDispatcher)
+ * so the draw lands after the camera/render-target are set, not at submit time. Translucent (glass,
+ * water) always uses the immediate re-emit path, since it needs vanilla's per-frame back-to-front sort
+ * to blend correctly.
  * <p>
  * The GPU path self-disables to the immediate path on any GPU error, and re-bakes automatically if the
  * vertex format changes (a shaderpack toggle). Sections outside the camera frustum are skipped entirely
@@ -125,20 +125,20 @@ public final class ShipTerrainMeshCache {
     private static final Supplier<String> GPU_BUFFER_LABEL = () -> "vs-ship-section";
     private static final Supplier<String> GPU_PASS_LABEL = () -> "vs_ship_terrain_gpu";
 
-    // The persistent-GPU-buffer path. EXPERIMENTAL, default OFF, toggled by keybind.
-    //   * It cuts ship-terrain CPU cost ~2x (measured ~2.3ms -> ~1.2ms/frame), but that only raises FPS
-    //     when the frame is CPU-bound. Under shaders the frame is GPU-bound, so it makes no FPS
-    //     difference there anyway.
-    //   * It draws through a custom RenderPass with the VANILLA pipeline, which is incompatible with a
-    //     shaderpack: Iris substitutes its own gbuffer program + extended vertex layout onto the normal
-    //     draw path, so our bypassing pass renders invisible under shaders. We therefore use the GPU
-    //     path ONLY when no shaderpack is active (frameGpuEffective / shadersActive()) and transparently
-    //     fall back to the immediate path under shaders -- where it would give no FPS gain regardless.
-    //   * The flush itself is deferred to renderAllFeatures TAIL (MixinFeatureRenderDispatcher) so the
-    //     draw lands after the camera/target are set, not at submit time.
-    // The immediate re-emit path is the always-correct default; toggle this on (keybind) to use the GPU
-    // path on CPU-bound / no-shader / many-ship setups. Also flipped off by a GPU error.
-    private static volatile boolean gpuPath = false;
+    // The persistent-GPU-buffer path: bake each section's solid/cutout geometry once into a GPU buffer
+    // and redraw it with only a per-section transform changing, instead of re-emitting every vertex on
+    // the CPU every frame. Always on; a GPU error flips it off for the rest of the session (a graceful
+    // fallback to the immediate re-emit path).
+    //   * Under a shaderpack it draws through Iris's gbuffer terrain program -- sections are repacked
+    //     into Iris's TERRAIN vertex format and drawn via ShipTerrainIrisPipeline's assigned pipelines,
+    //     so the hull is shaded exactly like surrounding chunk terrain. This is the large FPS win with a
+    //     ship in view (it eliminates the ~7ms/frame CPU re-emit). See frameIrisGpu.
+    //   * Without a shaderpack it draws through the vanilla moving-block pipeline.
+    //   * The flush is deferred to renderAllFeatures TAIL (MixinFeatureRenderDispatcher) so the draw
+    //     lands after the camera/render-target are set, not at submit time.
+    // Translucent geometry (glass/water) always stays on the immediate re-emit path -- it needs vanilla's
+    // per-frame back-to-front sort to blend correctly.
+    private static volatile boolean gpuPath = true;
 
     // Keyed by SectionPos.asLong-packed shipyard section position (disjoint per ship, so globally
     // unique). Primitive keys: the per-frame walk looks one up per non-air section, and a record
@@ -159,15 +159,16 @@ public final class ShipTerrainMeshCache {
     private final List<GpuDrawItem> gpuDrawQueue = new ArrayList<>();
     private boolean gpuFormatMismatch;
 
-    // Iris (and every shaderpack) substitutes its own gbuffer program + extended vertex format onto the
-    // normal RenderType.draw path (Iris MixinRenderType / MixinRenderPipeline / vertexformat). Our custom
-    // GPU render pass uses the VANILLA pipeline and vanilla-format baked vertices, so it bypasses all of
-    // that -- under shaders the geometry never gets Iris's program and renders invisible (the immediate
-    // path works only because it flows through the hooked vanilla draw). The GPU path also gives no FPS
-    // gain under shaders (the scene is GPU-bound). So it is used ONLY when no shaderpack is active; with
-    // shaders we transparently use the immediate path (always correct, same as vanilla terrain).
-    private boolean frameGpuEffective;   // gpuPath AND no shaderpack -- recomputed at the top of each frame
-    private boolean lastGpuEffective;    // detect flips (shaders or keybind toggled) to re-bake in the new mode
+    // Whether this frame uses the persistent-GPU-buffer path at all (vs the immediate re-emit). True when
+    // the GPU path is enabled and either no shaderpack is active (vanilla pipeline) or the Iris pipelines
+    // are registered (frameIrisGpu). Recomputed at the top of each frame; a flip (shaders or the keybind
+    // toggled) re-bakes every section in the new mode.
+    private boolean frameGpuEffective;
+    private boolean lastGpuEffective;    // detect flips to re-bake in the new mode
+    // This frame the GPU buffers draw through Iris's gbuffer program (sections baked into Iris's TERRAIN
+    // format and drawn via ShipTerrainIrisPipeline). False = vanilla pipeline (no shaderpack active).
+    private boolean frameIrisGpu;
+    private boolean lastIrisGpu;         // detect a shaderpack on/off flip to re-bake in the new format
 
     // Cached reflective handle to IrisApi.getInstance().isShaderPackInUse() -- resolved once, no hard dep.
     private static boolean irisResolved;
@@ -260,25 +261,6 @@ public final class ShipTerrainMeshCache {
         return !disabled;
     }
 
-    /** Flip the persistent-GPU-buffer path on/off (keybind) and re-bake everything in the new mode. */
-    public static void toggleGpuPath() {
-        gpuPath = !gpuPath;
-        INSTANCE.clear();
-        LOGGER.info("VS ship terrain GPU path {}", gpuPath ? "ENABLED" : "DISABLED (immediate re-emit)");
-    }
-
-    public static boolean isGpuPath() {
-        return gpuPath;
-    }
-
-    /**
-     * For the toggle overlay: true when the GPU path is requested but a shaderpack is forcing the
-     * immediate fallback (the GPU path can't integrate with Iris's gbuffer program -- see field docs).
-     */
-    public static boolean isShadersForcingImmediate() {
-        return gpuPath && shadersActive();
-    }
-
     /**
      * True when a shaderpack is active (Iris). Resolved reflectively against the stable Iris v0 API so
      * there is no compile/runtime dependency on Iris; if Iris is absent or anything fails we report
@@ -333,13 +315,22 @@ public final class ShipTerrainMeshCache {
             lastBaked = 0;
             gpuDrawQueue.clear();
 
-            // The GPU path is used only without a shaderpack (it can't integrate with Iris's gbuffer
-            // program). Recompute each frame; when it flips -- the user toggles shaders or the GPU
-            // keybind -- re-bake everything so each section is stored in the correct mode (persistent
-            // GPU buffers vs immediate Built meshes).
-            frameGpuEffective = gpuPath && !shadersActive();
-            if (frameGpuEffective != lastGpuEffective) {
+            // Recompute the render mode each frame; when it flips -- the user toggles shaders or the GPU
+            // keybind -- re-bake everything so each section is stored in the correct mode (persistent GPU
+            // buffers vs immediate Built meshes).
+            final boolean shadersOn = shadersActive();
+            // Under a shaderpack the GPU buffers draw through Iris's gbuffer terrain program via
+            // ShipTerrainIrisPipeline (sections are repacked into Iris's TERRAIN vertex format); without
+            // shaders they draw through the vanilla moving-block pipeline. frameIrisGpu selects the former.
+            frameIrisGpu = gpuPath && shadersOn && ShipTerrainIrisPipeline.ready();
+            frameGpuEffective = gpuPath && (!shadersOn || frameIrisGpu);
+            // Re-bake when the bake mode flips. frameGpuEffective catches GPU <-> immediate; frameIrisGpu
+            // catches a shaderpack toggle, which changes the bake FORMAT (vanilla BLOCK 32B <-> Iris
+            // TERRAIN 52B) while frameGpuEffective can stay true -- so both must be tracked, or a section
+            // baked before the toggle keeps a stale layout drawn through the wrong pipeline.
+            if (frameGpuEffective != lastGpuEffective || frameIrisGpu != lastIrisGpu) {
                 lastGpuEffective = frameGpuEffective;
+                lastIrisGpu = frameIrisGpu;
                 clear();
             }
 
@@ -531,7 +522,11 @@ public final class ShipTerrainMeshCache {
             for (int i = 0; i < n; i++) {
                 final GpuBufferSlice transform = slices[i];
                 for (final GpuMesh gm : gpuDrawQueue.get(i).meshes()) {
-                    final RenderPipeline pipeline = gm.type.pipeline();
+                    // Iris-format meshes (TERRAIN stride) draw through the Iris-assigned terrain pipeline
+                    // so the shaderpack's gbuffer program shades them. Vanilla-format meshes (no shaderpack)
+                    // use the render type's own pipeline.
+                    final int terrainStride = ShipTerrainIrisPipeline.terrainStride();
+                    final RenderPipeline pipeline = pipelineFor(gm, terrainStride);
                     if (gm.vertexSize != pipeline.getVertexFormat().getVertexSize()) {
                         // Shaderpack toggled since bake: the program now wants a different layout.
                         gpuFormatMismatch = true;
@@ -550,6 +545,21 @@ public final class ShipTerrainMeshCache {
                 }
             }
         }
+    }
+
+    /**
+     * Pick the draw pipeline for a baked mesh: the Iris-assigned solid/cutout TERRAIN pipeline when the
+     * mesh was baked in Iris format and that pipeline is registered, else the render type's own vanilla
+     * pipeline (no shaderpack active, or Iris registration unavailable).
+     */
+    private static RenderPipeline pipelineFor(final GpuMesh gm, final int terrainStride) {
+        if (terrainStride > 0 && gm.vertexSize == terrainStride) {
+            final RenderPipeline p = ShipTerrainIrisPipeline.terrainPipeline();
+            if (p != null) {
+                return p;
+            }
+        }
+        return gm.type.pipeline();
     }
 
     /** Bind a render type's textures (block atlas + lightmap) onto the pass, exactly as vanilla draw. */
@@ -724,9 +734,20 @@ public final class ShipTerrainMeshCache {
         if (ds.indexCount() <= 0) {
             return null;
         }
+        // Under a shaderpack, repack BLOCK -> Iris TERRAIN (computing the shader extras) so the
+        // Iris-assigned pipeline shades the hull; otherwise keep the vanilla moving-block layout.
+        final ByteBuffer verts;
+        final int vertexSize;
+        if (frameIrisGpu) {
+            verts = ShipTerrainIrisPipeline.repackBlockToTerrain(mesh.vertexBuffer(), ds.vertexCount(), ds.format());
+            vertexSize = ShipTerrainIrisPipeline.terrainStride();
+        } else {
+            verts = mesh.vertexBuffer();
+            vertexSize = ds.format().getVertexSize();
+        }
         final GpuBuffer buffer = RenderSystem.getDevice().createBuffer(
-            GPU_BUFFER_LABEL, GpuBuffer.USAGE_VERTEX, mesh.vertexBuffer());
-        return new GpuMesh(type, buffer, ds.indexCount(), ds.format().getVertexSize());
+            GPU_BUFFER_LABEL, GpuBuffer.USAGE_VERTEX, verts);
+        return new GpuMesh(type, buffer, ds.indexCount(), vertexSize);
     }
 
     /**
