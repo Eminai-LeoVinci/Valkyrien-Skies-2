@@ -105,6 +105,14 @@ object VSGamePackets {
                 }
                 entity.draggingInformation.shouldImpulseMovement = false
                 entity.draggingInformation.ticksSinceLastServerPacket = 0
+                // Keep the client drag-gate alive on EVERY packet, not only on a ship-CHANGE. The
+                // lastShipStoodOn setter above resets ticksSinceStoodOnShip only when the ship id actually
+                // changes; for a mob that stays on the same ship the counter would otherwise climb past
+                // TICKS_TO_DRAG_ENTITIES (25), isEntityBeingDraggedByAShip() would go false, and the lerp/carry
+                // would freeze mid-cruise while the ship moves on (the ~40-block drift-then-snap). The server
+                // only emits this packet while it is actively dragging the entity, so resetting here is correct;
+                // the gate still expires naturally once the entity leaves the ship and the packets stop arriving.
+                entity.draggingInformation.ticksSinceStoodOnShip = 0
 
                 entity.draggingInformation.relativePositionOnShip = ship.worldToShip.transformPosition(
                     Vector3d(entity.x, entity.y, entity.z)
@@ -164,6 +172,9 @@ object VSGamePackets {
                     }
                     entity.draggingInformation.ignoreNextGroundStand = true
                 }
+                // Same gate-keep-alive as the motion handler: a same-ship rotation packet must also refresh the
+                // stale-timer so isEntityBeingDraggedByAShip() doesn't expire mid-cruise.
+                entity.draggingInformation.ticksSinceStoodOnShip = 0
                 entity.draggingInformation.relativeHeadYawOnShip = EntityLerper.yawToShip(ship, entity.yHeadRot.toDouble())
                 entity.draggingInformation.lerpHeadYawOnShip = setRotation.yaw
                 entity.draggingInformation.relativePitchOnShip = entity.xRot.toDouble()

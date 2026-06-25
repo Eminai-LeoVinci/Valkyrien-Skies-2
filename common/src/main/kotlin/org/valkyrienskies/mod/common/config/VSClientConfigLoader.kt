@@ -51,6 +51,20 @@ object VSClientConfigLoader {
         }
     }
 
+    /**
+     * Persist the current [VSClientConfig.CLIENT] singleton back to `config/valkyrienskies_client.json`.
+     * Used by the `/vs expand-influence` / `/vs contract-influence` commands so live border tuning sticks
+     * across restarts. Best-effort: a write failure is logged, not thrown (the in-memory change still applies).
+     */
+    @JvmStatic
+    fun save() {
+        try {
+            writeConfig()
+        } catch (e: Exception) {
+            LOGGER.warn("Failed to save VS2 client config to {}: {}", CONFIG_FILE.toAbsolutePath(), e.message, e)
+        }
+    }
+
     private fun writeConfig() {
         CONFIG_FILE.parent?.let { Files.createDirectories(it) }
         mapper.writeValue(CONFIG_FILE.toFile(), linkedMapOf("client" to VSClientConfig.CLIENT))

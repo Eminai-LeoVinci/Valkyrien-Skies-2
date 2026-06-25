@@ -34,7 +34,8 @@ public class MixinPathFinder {
     Mob mob) {
         return original.call(instance, Collectors.<BlockPos, Target, BlockPos>toMap(blockPos ->  {
             BlockPos transformedPos = BlockPos.containing(VSGameUtilsKt.toWorldCoordinates(mob.level(), blockPos));
-            return this.nodeEvaluator.getGoal(transformedPos.getX(), transformedPos.getY(), transformedPos.getZ());
+            // 1.21.2 pathfinder rewrite: NodeEvaluator.getGoal(int,int,int) -> getTarget(double,double,double).
+            return this.nodeEvaluator.getTarget(transformedPos.getX(), transformedPos.getY(), transformedPos.getZ());
         }, Function.identity(), (last, second) -> second));
     }
 }

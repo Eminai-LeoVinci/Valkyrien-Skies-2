@@ -1,7 +1,13 @@
 package org.valkyrienskies.mod.fabric.common
 
+import com.mojang.brigadier.arguments.BoolArgumentType
+import com.mojang.brigadier.arguments.DoubleArgumentType
+import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.api.EnvType
 import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
@@ -14,6 +20,7 @@ import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.CameraType
 import net.minecraft.client.renderer.entity.EntityRendererProvider.Context
 import net.minecraft.commands.synchronization.SingletonArgumentInfo
+import net.minecraft.network.chat.Component
 import net.minecraft.core.Registry
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.core.registries.Registries
@@ -32,6 +39,7 @@ import net.minecraft.world.item.Item.Properties
 import net.minecraft.world.level.block.Block
 import org.valkyrienskies.mod.client.EmptyRenderer
 import org.valkyrienskies.mod.client.ShipCameraZoom
+import org.valkyrienskies.mod.client.ShipDebugRender
 import fuzs.forgeconfigapiport.fabric.api.neoforge.v4.NeoForgeConfigRegistry
 import fuzs.forgeconfigapiport.fabric.api.neoforge.v4.NeoForgeModConfigEvents
 import net.neoforged.fml.config.ModConfig
@@ -46,6 +54,7 @@ import org.valkyrienskies.mod.common.command.arguments.ShipArgument
 import org.valkyrienskies.mod.common.command.arguments.ShipArgumentInfo
 import org.valkyrienskies.mod.common.config.MassDatapackResolver
 import org.valkyrienskies.mod.common.config.VSEntityHandlerDataLoader
+import org.valkyrienskies.mod.common.config.VSClientConfig
 import org.valkyrienskies.mod.common.config.VSClientConfigLoader
 import org.valkyrienskies.mod.common.config.VSGameConfig
 import org.valkyrienskies.mod.common.config.VSKeyBindings
@@ -238,6 +247,93 @@ class ValkyrienSkiesModFabric : ModInitializer {
      * Only run on client
      */
     private fun onInitializeClient() {
+        // Client-side /vs subcommands. Two groups share this registration:
+        //  - DEBUG/TEST TOGGLES (ship-shadows, ship-emissive, influence-border): flip client render features live
+        //    for A/B testing; all default ON. Candidate for removal at the final project cleanup.
+        //  - INFLUENCE TUNING (expand-influence, contract-influence): a permanent feature -- adjust the per-face
+        //    ship influence-border extension in-game instead of editing the client JSON by hand.
+        // All set CLIENT state directly (render config / VSClientConfig), so they MUST stay client-side. They
+        // coexist with the server-side /vs tree (Fabric runs client commands first, falling through to the server
+        // for unmatched subcommands). MixinClientPacketListener (command_suggestion_merge) repairs Fabric's
+        // colliding-root merge so all of these show up in `/vs ` tab-completion.
+        ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
+            dispatcher.register(
+                ClientCommandManager.literal("vs")
+                    .then(
+                        ClientCommandManager.literal("ship-shadows").then(
+                            ClientCommandManager.argument("enabled", BoolArgumentType.bool()).executes { ctx ->
+                                val enabled = BoolArgumentType.getBool(ctx, "enabled")
+                                VSGameConfig.CLIENT.renderShipShadows = enabled
+                                ctx.source.sendFeedback(
+                                    Component.literal("VS ship shadows " + if (enabled) "ENABLED" else "DISABLED")
+                                )
+                                1
+                            }
+                        )
+                    )
+                    .then(
+                        ClientCommandManager.literal("ship-emissive").then(
+                            ClientCommandManager.argument("enabled", BoolArgumentType.bool()).executes { ctx ->
+                                val enabled = BoolArgumentType.getBool(ctx, "enabled")
+                                VSGameConfig.CLIENT.renderShipBlockIds = enabled
+                                ctx.source.sendFeedback(
+                                    Component.literal("VS ship emissive " + if (enabled) "ENABLED" else "DISABLED")
+                                )
+                                1
+                            }
+                        )
+                    )
+                    .then(
+                        ClientCommandManager.literal("influence-border").then(
+                            ClientCommandManager.argument("enabled", BoolArgumentType.bool()).executes { ctx ->
+                                val enabled = BoolArgumentType.getBool(ctx, "enabled")
+                                ShipDebugRender.influenceBorder = enabled
+                                ctx.source.sendFeedback(
+                                    Component.literal("VS influence border " + if (enabled) "ENABLED" else "DISABLED")
+                                )
+                                1
+                            }
+                        )
+                    )
+                    .then(
+                        ClientCommandManager.literal("expand-influence").then(
+                            ClientCommandManager.argument("amount", DoubleArgumentType.doubleArg(0.0)).then(
+                                ClientCommandManager.argument("direction", StringArgumentType.word())
+                                    .suggests { _, builder ->
+                                        INFLUENCE_FACE_NAMES.forEach { builder.suggest(it) }
+                                        builder.buildFuture()
+                                    }
+                                    .executes { ctx ->
+                                        adjustInfluenceExtend(
+                                            ctx.source,
+                                            StringArgumentType.getString(ctx, "direction"),
+                                            DoubleArgumentType.getDouble(ctx, "amount")
+                                        )
+                                    }
+                            )
+                        )
+                    )
+                    .then(
+                        ClientCommandManager.literal("contract-influence").then(
+                            ClientCommandManager.argument("amount", DoubleArgumentType.doubleArg(0.0)).then(
+                                ClientCommandManager.argument("direction", StringArgumentType.word())
+                                    .suggests { _, builder ->
+                                        INFLUENCE_FACE_NAMES.forEach { builder.suggest(it) }
+                                        builder.buildFuture()
+                                    }
+                                    .executes { ctx ->
+                                        adjustInfluenceExtend(
+                                            ctx.source,
+                                            StringArgumentType.getString(ctx, "direction"),
+                                            -DoubleArgumentType.getDouble(ctx, "amount")
+                                        )
+                                    }
+                            )
+                        )
+                    )
+            )
+        }
+
         // Register the ship mounting entity renderer
         EntityRendererRegistry.register(
             ValkyrienSkiesMod.SHIP_MOUNTING_ENTITY_TYPE
@@ -266,6 +362,55 @@ class ValkyrienSkiesModFabric : ModInitializer {
             }
             wasRidingShipMount = riding
         }
+
+        // Per-frame thin blue oriented wireframe of each ship's influence border, gated on the
+        // "/vs influence-border <bool>" toggle above (ShipDebugRender.influenceBorder). Drawn via a
+        // WorldRenderEvents.AFTER_ENTITIES listener -- the 1.21.5+ pipeline-safe replacement for the old
+        // DebugRenderer line-box mixin (removed). See ShipInfluenceBorderRenderer for the rationale.
+        ShipInfluenceBorderRenderer.register()
+    }
+
+    private val INFLUENCE_FACE_NAMES = listOf("Top", "Bottom", "Left", "Right", "Front", "Back")
+
+    /**
+     * Apply a signed change to one face of the global ship influence-border extension
+     * ([VSClientConfig.CLIENT]). Positive [delta] expands the border outward, negative contracts it; the
+     * per-face value is clamped at 0 -- the exact ship dimension, never smaller -- so e.g. contracting 10
+     * from a value of 2 lands at 0, not -8. EntityDragger (the carry) and the wireframe renderer both read
+     * these values live each tick/frame, so the change takes effect immediately (no reassemble, no relog),
+     * and it is persisted to the client JSON so it survives a restart.
+     */
+    private fun adjustInfluenceExtend(source: FabricClientCommandSource, direction: String, delta: Double): Int {
+        val c = VSClientConfig.CLIENT
+        val current = when (direction.lowercase()) {
+            "top" -> c.influenceExtendTop
+            "bottom" -> c.influenceExtendBottom
+            "left" -> c.influenceExtendLeft
+            "right" -> c.influenceExtendRight
+            "front" -> c.influenceExtendFront
+            "back" -> c.influenceExtendBack
+            else -> {
+                source.sendError(
+                    Component.literal("Unknown direction '$direction' -- use Top, Bottom, Left, Right, Front, or Back.")
+                )
+                return 0
+            }
+        }
+        val updated = (current + delta).coerceAtLeast(0.0)
+        when (direction.lowercase()) {
+            "top" -> c.influenceExtendTop = updated
+            "bottom" -> c.influenceExtendBottom = updated
+            "left" -> c.influenceExtendLeft = updated
+            "right" -> c.influenceExtendRight = updated
+            "front" -> c.influenceExtendFront = updated
+            "back" -> c.influenceExtendBack = updated
+        }
+        VSClientConfigLoader.save()
+        val face = direction.lowercase().replaceFirstChar { it.uppercase() }
+        source.sendFeedback(
+            Component.literal("Influence border: $face %.1f -> %.1f blocks".format(current, updated))
+        )
+        return 1
     }
 
     private fun registerBlockAndItem(registryName: String, block: Block): Item {

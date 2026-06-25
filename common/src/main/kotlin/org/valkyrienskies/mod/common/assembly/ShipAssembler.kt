@@ -128,7 +128,7 @@ object ShipAssembler {
 
         // Mark as recently spawned immediately so player movement packets processed
         // during chunk loading don't treat this new ship as "unloaded".
-        EntityShipCollisionUtils.markShipAsRecentlySpawned(toShip.id)
+        EntityShipCollisionUtils.markShipAsRecentlySpawned(toShip.id, 2_000_000_000L) // ~2s gravity-hold on assembly (mobs/entities only)
 
         val (wasSuccessful, _, toCenter) = moveBlocksFromTo(level, blocks, fromShip, toShip, minB, maxB, toShip.chunkClaim.getCenterBlockCoordinates(level.yRange, Vector3i()))
 
@@ -411,7 +411,7 @@ object ShipAssembler {
             // Mark ship as recently spawned immediately so that player movement packets
             // processed during managedBlock (in the preload phase) don't treat this new
             // ship as "unloaded" and freeze the player.
-            EntityShipCollisionUtils.markShipAsRecentlySpawned(toShip.id)
+            EntityShipCollisionUtils.markShipAsRecentlySpawned(toShip.id, 2_000_000_000L) // ~2s gravity-hold on assembly (mobs/entities only)
 
             val toCenter = toShip.chunkClaim.getCenterBlockCoordinates(level.yRange, Vector3i())
             val toChunkCenter = ChunkPos(toCenter.x.toInt() shr 4, toCenter.z.toInt() shr 4)

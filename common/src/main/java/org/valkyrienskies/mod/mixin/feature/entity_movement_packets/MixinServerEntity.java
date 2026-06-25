@@ -3,7 +3,8 @@ package org.valkyrienskies.mod.mixin.feature.entity_movement_packets;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import java.util.List;
-import java.util.function.Consumer;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
@@ -43,15 +44,32 @@ public class MixinServerEntity {
     /**
      * @author Tomato
      * @reason Intercept entity motion packets to send our own data, then cancel the original packet.
+     *
+     * <p>1.21.11 port fix: {@code ServerEntity.sendChanges} no longer broadcasts move/teleport/motion/rotate
+     * packets via {@code Consumer.accept} (that path now only exists in {@code sendPairingData} for spawn data).
+     * In 1.21.11 every position/motion/rotation packet is dispatched through
+     * {@code ServerEntity$Synchronizer.sendToTrackingPlayers(Packet)}. The old {@code Consumer.accept} target
+     * matched nothing here and, with {@code defaultRequire=0}, silently no-opped — so the VS ship-motion packet
+     * was NEVER sent for any entity and every ship-borne mob / remote player interpolated as a plain remote
+     * entity (the ~3-block slide at speed). Retargeting to {@code sendToTrackingPlayers} restores the sync.
+     * {@code require = 1} makes any future mapping/refactor break fail loudly instead of silently no-opping again.
      */
     @WrapOperation(
         method = "sendChanges",
         at = @At(
             value = "INVOKE",
-            target = "Ljava/util/function/Consumer;accept(Ljava/lang/Object;)V")
+            target = "Lnet/minecraft/server/level/ServerEntity$Synchronizer;"
+                + "sendToTrackingPlayers(Lnet/minecraft/network/protocol/Packet;)V"),
+        require = 1
     )
-    private void wrapBroadcastAccept(Consumer instance, Object t, Operation<Void> original) {
-        if (t instanceof ClientboundSetEntityMotionPacket || t instanceof ClientboundTeleportEntityPacket || t instanceof ClientboundMoveEntityPacket || t instanceof ClientboundRotateHeadPacket) {
+    private void wrapBroadcastAccept(ServerEntity.Synchronizer instance, Packet<?> t, Operation<Void> original) {
+        if (t instanceof ClientboundSetEntityMotionPacket || t instanceof ClientboundTeleportEntityPacket || t instanceof ClientboundMoveEntityPacket || t instanceof ClientboundRotateHeadPacket || t instanceof ClientboundEntityPositionSyncPacket) {
+            // ClientboundEntityPositionSyncPacket is the 1.21.x FORCED full position-sync (sent ~every 400 ticks
+            // and on large deltas / onGround flips), built from the entity's WORLD position. It was NOT in this
+            // guard, so for a dragged mob it fell through to the raw vanilla send -> the client hard-SNAPS via
+            // Entity.snapTo to a stale world position (the "enderman teleport", no particles, any time). Routing it
+            // into the existing dragged-mob branch converts it to a ship-frame PacketEntityShipMotion like the
+            // other position packets, so it lerps instead of snapping.
             if (EntityDragger.isDraggable(entity)) {
                 IEntityDraggingInformationProvider draggedEntity = (IEntityDraggingInformationProvider) entity;
                 EntityDraggingInformation dragInfo = draggedEntity.getDraggingInformation();

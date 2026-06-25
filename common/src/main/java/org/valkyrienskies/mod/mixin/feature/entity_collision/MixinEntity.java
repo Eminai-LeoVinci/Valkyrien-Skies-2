@@ -26,6 +26,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.valkyrienskies.core.api.ships.Ship;
@@ -51,6 +52,24 @@ public abstract class MixinEntity implements IEntityDraggingInformationProvider 
         if (EntityShipCollisionUtils.isCollidingWithUnloadedShips(Entity.class.cast(this))) {
             ci.cancel();
         }
+    }
+
+    /**
+     * Gravity-only hold during a ship transition (login / assembly / disassembly). The deck collision isn't
+     * solid yet, but instead of full-freezing the entity (beforeMove, which would also block walking + camera),
+     * clamp ONLY the downward component of its movement so it cannot fall through the not-yet-solid deck, while
+     * X/Z walking and the camera stay completely free. Deadline-bounded via the spawn-grace / world-freeze that
+     * arm it (see EntityShipCollisionUtils.shouldHoldGravity).
+     */
+    @ModifyVariable(method = "move", at = @At("HEAD"), argsOnly = true, ordinal = 0)
+    private Vec3 vs$holdGravityDuringShipTransition(final Vec3 pos) {
+        if (pos.y < 0.0 && EntityShipCollisionUtils.shouldHoldGravity(Entity.class.cast(this))) {
+            final Entity self = Entity.class.cast(this);
+            final Vec3 dm = self.getDeltaMovement();
+            self.setDeltaMovement(dm.x, 0.0, dm.z);
+            return new Vec3(pos.x, 0.0, pos.z);
+        }
+        return pos;
     }
 
     /**

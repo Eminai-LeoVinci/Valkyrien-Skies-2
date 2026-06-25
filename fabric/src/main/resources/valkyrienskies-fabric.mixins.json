@@ -19,7 +19,9 @@
     "compat.emf.MixinEMFAnimationEntityContext",
     "compat.emf.MixinEMFStandAtHelm",
     "compat.shouldersurfing.MixinSSRPerspectiveCycle",
-    "compat.sodium.MixinRenderSectionManager"
+    "compat.sodium.MixinRenderSectionManager",
+    "feature.command_suggestion_merge.MixinClientPacketListener",
+    "feature.vs_command_passthrough.MixinClientPacketListenerPassthrough"
   ],
   "injectors": {
     "defaultRequire": 0

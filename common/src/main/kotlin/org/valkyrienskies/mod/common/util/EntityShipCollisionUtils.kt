@@ -28,6 +28,7 @@ import org.valkyrienskies.mod.common.vsCore
 import org.valkyrienskies.mod.mixinducks.feature.tickets.PlayerKnownShipsDuck
 import org.valkyrienskies.mod.util.BugFixUtil
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 object EntityShipCollisionUtils {
 
@@ -45,8 +46,9 @@ object EntityShipCollisionUtils {
     private const val SPAWN_GRACE_PERIOD_NANOS = 5_000_000_000L // ~5 seconds
 
     @JvmStatic
-    fun markShipAsRecentlySpawned(shipId: ShipId) {
-        recentlySpawnedShips[shipId] = System.nanoTime() + SPAWN_GRACE_PERIOD_NANOS
+    @JvmOverloads
+    fun markShipAsRecentlySpawned(shipId: ShipId, durationNanos: Long = SPAWN_GRACE_PERIOD_NANOS) {
+        recentlySpawnedShips[shipId] = System.nanoTime() + durationNanos
     }
 
     @JvmStatic
@@ -57,6 +59,93 @@ object EntityShipCollisionUtils {
             return false
         }
         return true
+    }
+
+    /**
+     * Ship-transition fall-through hold keyed on a WORLD-space AABB (not a ship id) so it survives the ship
+     * being REMOVED from the world — used for DISASSEMBLY, where the shipyard collision vanishes for a split
+     * second before the world blocks become collidable and on-ship entities (player, mobs, armor stands) would
+     * drop a block + scatter. Armed before AND after the teardown from Eureka's ShipHelmBlockEntity.disassemble;
+     * checked at the TOP of [isCollidingWithUnloadedShips], before the allShips early-out, so it still applies
+     * once the ship is gone. Bounded by a wall-clock deadline; entries self-expire. (Login + assembly reuse the
+     * ship-id [recentlySpawnedShips] path instead, since the ship still exists there.)
+     */
+    private class WorldFreezeEntry(val dimensionId: String, val aabb: AABBd, val deadlineNanos: Long)
+    private val worldFreezes = ConcurrentLinkedQueue<WorldFreezeEntry>()
+
+    /** The ship's world-space bounding box (from its shipyard AABB transformed to world), for [markWorldFreeze]. */
+    @JvmStatic
+    fun worldAABBForShip(ship: Ship): AABBd {
+        val sb = ship.shipAABB
+        return if (sb != null) {
+            AABBd(
+                sb.minX().toDouble(), sb.minY().toDouble(), sb.minZ().toDouble(),
+                (sb.maxX() + 1).toDouble(), (sb.maxY() + 1).toDouble(), (sb.maxZ() + 1).toDouble()
+            ).transform(ship.shipToWorld)
+        } else {
+            val p = ship.transform.position
+            AABBd(p.x() - 32.0, p.y() - 32.0, p.z() - 32.0, p.x() + 32.0, p.y() + 32.0, p.z() + 32.0)
+        }
+    }
+
+    @JvmStatic
+    fun markWorldFreeze(level: Level, aabb: AABBd, durationNanos: Long) {
+        worldFreezes.add(WorldFreezeEntry(level.dimensionId, aabb, System.nanoTime() + durationNanos))
+    }
+
+    @JvmStatic
+    fun isInWorldFreeze(entity: Entity): Boolean {
+        if (worldFreezes.isEmpty()) return false
+        val now = System.nanoTime()
+        val dim = entity.level().dimensionId
+        val px = entity.x
+        val py = entity.y
+        val pz = entity.z
+        var held = false
+        val it = worldFreezes.iterator()
+        while (it.hasNext()) {
+            val e = it.next()
+            if (now - e.deadlineNanos > 0) {
+                it.remove()
+                continue
+            }
+            if (!held && e.dimensionId == dim &&
+                px >= e.aabb.minX() && px <= e.aabb.maxX() &&
+                py >= e.aabb.minY() && py <= e.aabb.maxY() &&
+                pz >= e.aabb.minZ() && pz <= e.aabb.maxZ()
+            ) {
+                held = true
+            }
+        }
+        return held
+    }
+
+    /**
+     * Whether [entity]'s GRAVITY (only) should be held this tick: it is in a ship-transition zone where the
+     * deck collision isn't solid yet -- a DISASSEMBLY world-freeze, OR over a freshly-loaded/assembled ship
+     * still in its spawn-grace (login / assembly). Used by MixinEntity.vs$holdGravityDuringShipTransition to
+     * clamp ONLY the downward movement, so the entity keeps full X/Z + camera control but cannot fall through.
+     * Deadline-bounded by both [worldFreezes] and [recentlySpawnedShips], so it never holds forever.
+     */
+    @JvmStatic
+    fun shouldHoldGravity(entity: Entity): Boolean {
+        // MOBS / ENTITIES ONLY. Players are excluded: confirmed in-world they never fall through on a
+        // login/assembly/disassembly transition, and the downward-clamp made elytra gliding feel floaty
+        // (like slow-falling). Excluding them keeps player flight + gravity completely vanilla.
+        if (entity is Player) return false
+        if (isInWorldFreeze(entity)) return true
+        val level = entity.level()
+        if (!(level is ServerLevel || (level.isClientSide && level is ClientLevel))) return false
+        val allShips = level.allShips
+        if (allShips.none()) return false
+        val gameTime = level.gameTime
+        val aabb = entity.boundingBox.toJOML()
+        for (ship in allShips) {
+            if (ship.chunkClaimDimension != level.dimensionId) continue
+            if (!roughWorldAABB(ship, level, gameTime).intersectsAABB(aabb)) continue
+            if (isInSpawnGracePeriod(ship.id)) return true
+        }
+        return false
     }
     private const val PARTICLE_COLLISION_BOX_EXPANSION = 0.00390625 //1.0 / 256.0
 
@@ -147,7 +236,13 @@ object EntityShipCollisionUtils {
                 // chunks haven't loaded yet), which cancels all entity movement.
                 // This must be checked BEFORE vs_isKnownShip, because the player won't
                 // know about a brand-new ship yet either.
-                if (isInSpawnGracePeriod(ship.id)) continue // pretend it's loaded → don't block movement
+                // Recently-spawned / freshly-loaded / login ship: SKIP the full-freeze collision check (its
+                // chunks are still loading) so the entity stays FREE TO MOVE — walking + camera unaffected. The
+                // FALL through the not-yet-solid deck is prevented separately and GRAVITY-ONLY by
+                // MixinEntity.vs$holdGravityDuringShipTransition (via shouldHoldGravity, which keys on this same
+                // spawn-grace + the disassembly world-freeze). Armed by markShipAsRecentlySpawned on assembly
+                // (ShipAssembler) + login (MixinPlayerList).
+                if (isInSpawnGracePeriod(ship.id)) continue
                 if (entity is PlayerKnownShipsDuck && !entity.vs_isKnownShip(ship.id)) {
                     return true
                 }

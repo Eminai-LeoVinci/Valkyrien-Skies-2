@@ -42,6 +42,12 @@ class EntityDraggingInformation {
     var relativeHeadYawOnShip: Double? = null
     var relativePitchOnShip: Double? = null
 
+    // Armor-stand deck-lock: the locked SHIP-RELATIVE yaw (radians, in the EntityDragger carry's
+    // look-vector convention). Captured once when the stand starts being dragged (and on re-aim);
+    // the carry then reconstructs its world yaw from this ABSOLUTELY each tick instead of integrating
+    // a per-tick delta -- immune to a parked ship's pitch/roll idle-wobble that jittered the static yaw.
+    var draggedArmorStandRelYaw: Double? = null
+
     var lerpSteps: Int = 0
     var headLerpSteps: Int = 0
 

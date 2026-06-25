@@ -53,20 +53,6 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
 
     // This is a partial fix for mounting ships that have been deleted
     // TODO: Make a full fix eventually
-    /*
-    override fun positionRider(entity: Entity) {
-        if (level().isBlockInShipyard(position()) && level().getShipManagingPos(position()) == null) {
-            // Stop rider positioning if we can't find the ship
-            entity.removeVehicle()
-            return
-        }
-        super.positionRider(entity)
-    }
-
-     */
-
-    // This is a partial fix for mounting ships that have been deleted
-    // TODO: Make a full fix eventually
     override fun getDismountLocationForPassenger(livingEntity: LivingEntity): Vec3 {
         if (level().isBlockInShipyard(position()) && level().getShipManagingPos(position()) == null) {
             // Don't teleport to the ship if we can't find the ship

@@ -76,6 +76,22 @@ object VSGameConfig {
             description = "The way ships are rendered by default"
         )
         var defaultRenderer = ShipRenderer.VANILLA
+
+        @ConfigEntry(
+            description = "Draw ship terrain into the shaderpack's shadow map so ships cast + self-shadow under " +
+                "Iris shaders. Reaches into Iris internals, so it self-disables (no ship shadows, main pass " +
+                "unaffected) if a future Iris changes them. Toggle in-game with /vs ship-shadows <true|false>. " +
+                "Default on."
+        )
+        var renderShipShadows = true
+
+        @ConfigEntry(
+            description = "Write each ship block's shaderpack id into mc_Entity so Iris shaders light/bloom ship " +
+                "blocks (glowstone, lanterns, lava, ...) and apply per-block material logic, exactly as on land. " +
+                "Costs some FPS under heavy lighting (the shaderpack's emission/voxel work, not the mod's). " +
+                "Toggle in-game with /vs ship-emissive <true|false>. Default on."
+        )
+        var renderShipBlockIds = true
     }
 
     class Server {

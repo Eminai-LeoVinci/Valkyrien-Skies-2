@@ -28,10 +28,9 @@ public class ValkyrienCommonMixinConfigPlugin implements IMixinConfigPlugin {
     }
 
     private static VSRenderer getVSRendererHelper() {
-        //TODO remove?
-        if (classExists("optifine.OptiFineTransformationService")) {
-            return VSRenderer.OPTIFINE;
-        } else if (classExists("net.caffeinemc.mods.sodium.client.SodiumClientMod")) {
+        // OptiFine can't load on Fabric 1.21.11, and every consumer branches only on == SODIUM, so the old
+        // OPTIFINE result was never used. Detect Sodium, otherwise vanilla.
+        if (classExists("net.caffeinemc.mods.sodium.client.SodiumClientMod")) {
             return VSRenderer.SODIUM;
         } else {
             return VSRenderer.VANILLA;

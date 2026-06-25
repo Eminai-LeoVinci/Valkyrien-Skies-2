@@ -101,14 +101,16 @@ sourceSets {
         java {
             // 1.21.11 port: exclude third-party mod-compat mixins (those mods have no 1.21.11 builds).
             // EXCEPTIONS: mod_compat/sodium is required (Sodium replaces the chunk renderer entirely,
-            // so ship terrain is invisible without it; ported to Sodium 0.8.11), and mod_compat/voxy
-            // (Voxy 0.2.15-beta has a 1.21.11 build) carries the per-pixel ship/LOD depth occlusion.
+            // so ship terrain is invisible without it; ported to Sodium 0.8.11), mod_compat/voxy
+            // (Voxy 0.2.15-beta has a 1.21.11 build) carries the per-pixel ship/LOD depth occlusion, and
+            // mod_compat/iris fixes Iris's GENERIC vertex attributes (mc_Entity/at_midBlock) for ship terrain.
             // The carve-outs must omit the trailing slash so they also match the directory itself
             // (dir paths have no trailing slash) — otherwise Gradle prunes the whole subtree.
             exclude {
                 it.path.contains("/mixin/mod_compat/")
                     && !it.path.contains("/mixin/mod_compat/sodium")
                     && !it.path.contains("/mixin/mod_compat/voxy")
+                    && !it.path.contains("/mixin/mod_compat/iris")
             }
             // Deferred: MixinSodiumWorldRenderer needs a Sodium 0.8 block-entity-render rewrite.
             // Dead: RenderSectionManagerAccessor uses the removed me.jellysquid API and is unused.
@@ -121,7 +123,6 @@ sourceSets {
             exclude "org/valkyrienskies/mod/mixin/accessors/client/render/chunk/**"
             exclude "org/valkyrienskies/mod/mixin/accessors/server/level/ChunkHolderAccessor.java"
             exclude "org/valkyrienskies/mod/mixin/feature/enchantment_table/**"
-            exclude "org/valkyrienskies/mod/mixin/feature/ai/node_evaluator/**"
             exclude "org/valkyrienskies/mod/mixin/feature/sculk/**"
             // Non-core debug/polish render mixins: depend on the pre-1.21.5 render pipeline.
             // Out of scope for helm + assembly; revisit during the render-layer port.

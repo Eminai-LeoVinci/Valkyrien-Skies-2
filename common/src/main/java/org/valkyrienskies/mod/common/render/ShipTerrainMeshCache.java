@@ -19,6 +19,7 @@ import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.logging.LogUtils;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.shorts.ShortArrayList;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -53,7 +54,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.material.FluidState;
-import net.minecraft.world.phys.AABB;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4dc;
 import org.joml.Matrix4f;
@@ -64,6 +64,7 @@ import org.slf4j.Logger;
 import org.valkyrienskies.core.api.ships.ClientShip;
 import org.valkyrienskies.core.api.ships.properties.ShipTransform;
 import org.valkyrienskies.mod.common.VSClientGameUtils;
+import org.valkyrienskies.mod.common.config.VSGameConfig;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
 import org.valkyrienskies.mod.mixin.accessors.client.render.FrustumInvoker;
@@ -117,6 +118,12 @@ public final class ShipTerrainMeshCache {
     // its whole hull at once (a visible hitch). Over-budget sections bake on following frames.
     private static final int MAX_BAKES_PER_FRAME = 8;
 
+    // Auto-recovery for the cache + GPU path: after a render/GPU error we skip the failed path for this
+    // many frames (~1.7s at 60fps) and then RETRY, instead of disabling it permanently until relog. Repeated
+    // failures back the retry off exponentially (capped) so a persistently-broken state doesn't thrash.
+    private static final int RETRY_BASE_FRAMES = 100;
+    private static final int RETRY_BACKOFF_MAX = 64;
+
     // Constant writeTransform args (match vanilla RenderType.draw): no colour modulation, no model
     // offset, identity texture matrix. Never mutated -- writeTransform only reads them.
     private static final Vector4f WHITE = new Vector4f(1.0f, 1.0f, 1.0f, 1.0f);
@@ -127,8 +134,8 @@ public final class ShipTerrainMeshCache {
 
     // The persistent-GPU-buffer path: bake each section's solid/cutout geometry once into a GPU buffer
     // and redraw it with only a per-section transform changing, instead of re-emitting every vertex on
-    // the CPU every frame. Always on; a GPU error flips it off for the rest of the session (a graceful
-    // fallback to the immediate re-emit path).
+    // the CPU every frame. Always on; a GPU error skips it for a cooldown (gpuPathCooldown) and then
+    // retries, gracefully degrading to the immediate re-emit path meanwhile.
     //   * Under a shaderpack it draws through Iris's gbuffer terrain program -- sections are repacked
     //     into Iris's TERRAIN vertex format and drawn via ShipTerrainIrisPipeline's assigned pipelines,
     //     so the hull is shaded exactly like surrounding chunk terrain. This is the large FPS win with a
@@ -138,7 +145,6 @@ public final class ShipTerrainMeshCache {
     //     lands after the camera/render-target are set, not at submit time.
     // Translucent geometry (glass/water) always stays on the immediate re-emit path -- it needs vanilla's
     // per-frame back-to-front sort to blend correctly.
-    private static volatile boolean gpuPath = true;
 
     // Keyed by SectionPos.asLong-packed shipyard section position (disjoint per ship, so globally
     // unique). Primitive keys: the per-frame walk looks one up per non-air section, and a record
@@ -146,7 +152,13 @@ public final class ShipTerrainMeshCache {
     private final Long2ObjectOpenHashMap<CachedSection> sections = new Long2ObjectOpenHashMap<>();
 
     private long frame;
-    private boolean disabled;
+    // Post-failure retry cooldowns (frames) + exponential backoff multipliers, render-thread only. 0 = the
+    // path is active. cacheCooldown gates the whole cache (-> per-block immediate fallback); gpuPathCooldown
+    // gates only the persistent-GPU path (-> immediate re-emit of cached meshes).
+    private int cacheCooldown;
+    private int cacheBackoff = 1;
+    private int gpuPathCooldown;
+    private int gpuBackoff = 1;
     private ClientLevel boundLevel;
 
     // Reusable scratch (render thread only -- never shared) to avoid per-section/-frame allocation.
@@ -159,16 +171,30 @@ public final class ShipTerrainMeshCache {
     private final List<GpuDrawItem> gpuDrawQueue = new ArrayList<>();
     private boolean gpuFormatMismatch;
 
+    // This frame's camera model-view (copied at renderAll); composed onto each queued ship pose at flush.
+    private final Matrix4f frameCamModelView = new Matrix4f();
+    // Per-pass flush guards so the queue is drawn at most once per pass (the main gbuffer pass + Iris's shadow
+    // pass, which also fires the flush hook), reset each renderAll. The queue is RETAINED until the next
+    // renderAll (not cleared after the first flush) so both passes can draw it -- the shadow pass runs before
+    // renderAll, so it draws the previous frame's queue (a 1-frame shadow lag).
+    private boolean flushedMain;
+    private boolean flushedShadow;
+
     // Whether this frame uses the persistent-GPU-buffer path at all (vs the immediate re-emit). True when
-    // the GPU path is enabled and either no shaderpack is active (vanilla pipeline) or the Iris pipelines
-    // are registered (frameIrisGpu). Recomputed at the top of each frame; a flip (shaders or the keybind
-    // toggled) re-bakes every section in the new mode.
+    // the GPU path is active (not in a post-error cooldown) and either no shaderpack is active (vanilla
+    // pipeline) or the Iris pipelines are registered (frameIrisGpu). Recomputed at the top of each frame; a
+    // flip (shaders toggled, or the GPU path recovering after an error) re-bakes every section in the new mode.
     private boolean frameGpuEffective;
     private boolean lastGpuEffective;    // detect flips to re-bake in the new mode
     // This frame the GPU buffers draw through Iris's gbuffer program (sections baked into Iris's TERRAIN
     // format and drawn via ShipTerrainIrisPipeline). False = vanilla pipeline (no shaderpack active).
     private boolean frameIrisGpu;
     private boolean lastIrisGpu;         // detect a shaderpack on/off flip to re-bake in the new format
+    // This frame the bake should write each block's shaderpack id into mc_Entity (emissive/material). Gated on
+    // the Iris path AND the renderShipBlockIds toggle; the ids are baked into the GPU buffer, so a toggle flip
+    // must re-bake -- tracked like the other bake-mode flips.
+    private boolean frameBlockIds;
+    private boolean lastBlockIds;
 
     // Cached reflective handle to IrisApi.getInstance().isShaderPackInUse() -- resolved once, no hard dep.
     private static boolean irisResolved;
@@ -229,8 +255,12 @@ public final class ShipTerrainMeshCache {
         }
     }
 
-    /** A queued GPU draw: one section's persistent meshes plus its model-view matrix for this frame. */
-    private record GpuDrawItem(Matrix4f modelView, List<GpuMesh> meshes) {
+    /**
+     * A queued GPU draw: one section's persistent meshes plus its RAW ship pose (camera-relative). The
+     * camera (main pass) or shadow (shadow pass) model-view is composed onto it at flush time, so the same
+     * queue can be drawn into both passes.
+     */
+    private record GpuDrawItem(Matrix4f shipPose, List<GpuMesh> meshes) {
     }
 
     private static final class CachedSection {
@@ -253,12 +283,20 @@ public final class ShipTerrainMeshCache {
     }
 
     public boolean isDisabled() {
-        return disabled;
+        return cacheCooldown > 0;
     }
 
-    /** Whether the renderer should take the cached path (vs the immediate fallback). */
+    /**
+     * Whether the renderer should take the cached path (vs the immediate per-block fallback). Also TICKS the
+     * post-failure retry cooldown down -- the renderer calls this exactly once per frame to choose its path,
+     * so when the cache previously failed we spend [cacheCooldown] frames on the fallback and then retry.
+     */
     public boolean canUseCache() {
-        return !disabled;
+        if (cacheCooldown > 0) {
+            cacheCooldown--;
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -303,9 +341,8 @@ public final class ShipTerrainMeshCache {
         final Frustum frustum, final LongSet occludedShipIds,
         final double camX, final double camY, final double camZ) {
 
-        if (disabled) {
-            return;
-        }
+        // No disabled-guard here: the renderer only calls renderAll when canUseCache() returned true (cooldown
+        // already 0), and canUseCache ticks the cooldown. renderAll runs => the cache is active this frame.
         try {
             if (boundLevel != level) {
                 clear();
@@ -314,23 +351,37 @@ public final class ShipTerrainMeshCache {
             frame++;
             lastBaked = 0;
             gpuDrawQueue.clear();
+            flushedMain = false;
+            flushedShadow = false;
 
-            // Recompute the render mode each frame; when it flips -- the user toggles shaders or the GPU
-            // keybind -- re-bake everything so each section is stored in the correct mode (persistent GPU
-            // buffers vs immediate Built meshes).
+            // Tick the GPU-path retry cooldown (a GPU draw error parks the persistent-GPU path here); when it
+            // reaches 0 the path re-activates and the flip below re-bakes into GPU buffers.
+            if (gpuPathCooldown > 0) {
+                gpuPathCooldown--;
+            }
+            final boolean gpuActive = gpuPathCooldown == 0;
+
+            // Recompute the render mode each frame; when it flips -- shaders toggled, or the GPU path
+            // recovering after an error -- re-bake everything so each section is stored in the correct mode
+            // (persistent GPU buffers vs immediate Built meshes).
             final boolean shadersOn = shadersActive();
             // Under a shaderpack the GPU buffers draw through Iris's gbuffer terrain program via
             // ShipTerrainIrisPipeline (sections are repacked into Iris's TERRAIN vertex format); without
             // shaders they draw through the vanilla moving-block pipeline. frameIrisGpu selects the former.
-            frameIrisGpu = gpuPath && shadersOn && ShipTerrainIrisPipeline.ready();
-            frameGpuEffective = gpuPath && (!shadersOn || frameIrisGpu);
+            frameIrisGpu = gpuActive && shadersOn && ShipTerrainIrisPipeline.ready();
+            frameGpuEffective = gpuActive && (!shadersOn || frameIrisGpu);
+            // Whether to bake shaderpack block ids into mc_Entity (emissive/material) -- Iris path + toggle.
+            frameBlockIds = frameIrisGpu && VSGameConfig.CLIENT.getRenderShipBlockIds();
             // Re-bake when the bake mode flips. frameGpuEffective catches GPU <-> immediate; frameIrisGpu
             // catches a shaderpack toggle, which changes the bake FORMAT (vanilla BLOCK 32B <-> Iris
-            // TERRAIN 52B) while frameGpuEffective can stay true -- so both must be tracked, or a section
-            // baked before the toggle keeps a stale layout drawn through the wrong pipeline.
-            if (frameGpuEffective != lastGpuEffective || frameIrisGpu != lastIrisGpu) {
+            // TERRAIN 52B) while frameGpuEffective can stay true; frameBlockIds catches the emissive toggle,
+            // whose ids are baked into the buffer -- so all three must be tracked, or a section baked before a
+            // flip keeps a stale layout / stale (or missing) mc_Entity ids.
+            if (frameGpuEffective != lastGpuEffective || frameIrisGpu != lastIrisGpu
+                || frameBlockIds != lastBlockIds) {
                 lastGpuEffective = frameGpuEffective;
                 lastIrisGpu = frameIrisGpu;
+                lastBlockIds = frameBlockIds;
                 clear();
             }
 
@@ -339,12 +390,26 @@ public final class ShipTerrainMeshCache {
             // camera-relative-baked vertices do (vanilla draws immediate meshes with this matrix).
             // Constant for the whole pass; copy it because we multiply per section.
             final Matrix4f camModelView = new Matrix4f(RenderSystem.getModelViewMatrix());
+            // Remember it for the deferred flush(es) -- composed onto each section's raw ship pose per pass.
+            frameCamModelView.set(camModelView);
 
             final int minSectionY = level.getMinSectionY();
 
+            // When ship shadows are on, also keep sections/ships the SUN's shadow frustum can see -- not just
+            // the camera's. Otherwise a caster behind the camera is culled and its shadow vanishes as you turn.
+            // The shadow frustum is ~1 frame stale here (it's set during the shadow pass, which ran before this
+            // renderAll), but it's a large box around the player so that lag is harmless.
+            final Frustum shadowFrustum =
+                (ShipTerrainIrisPipeline.shadowReady() && VSGameConfig.CLIENT.getRenderShipShadows())
+                    ? ShipTerrainIrisPipeline.shadowFrustum() : null;
+
             for (final ClientShip ship : VSGameUtilsKt.getShipObjectWorld(level).getLoadedShips()) {
-                // Skip the whole ship (and all its per-chunk/-section work) when it can't be on screen.
-                if (frustum != null && !frustum.isVisible(VectorConversionsMCKt.toMinecraft(ship.getRenderAABB()))) {
+                // Skip the whole ship (and all its per-chunk/-section work) when neither the camera nor (for
+                // shadows) the sun can see it.
+                final var shipAabb = VectorConversionsMCKt.toMinecraft(ship.getRenderAABB());
+                final boolean shipVisible = (frustum == null || frustum.isVisible(shipAabb))
+                    || (shadowFrustum != null && shadowFrustum.isVisible(shipAabb));
+                if (!shipVisible) {
                     continue;
                 }
                 // VS-VOXY-OCCLUSION: ship is fully behind Voxy LOD terrain (sampled from Voxy's own
@@ -365,7 +430,16 @@ public final class ShipTerrainMeshCache {
                         final int sectionY = minSectionY + sectionIndex;
                         final long key = SectionPos.asLong(chunkX, sectionY, chunkZ);
 
-                        final boolean visible = isShipSectionVisible(frustum, shipToWorld, chunkX, sectionY, chunkZ);
+                        // Visible to the camera OR (for shadows) to the sun -- so casters behind the camera
+                        // still bake + queue, and thus draw into the shadow map. The sun test uses the public
+                        // isVisible(AABB) (not the allocation-free cubeInFrustum invoker) so Iris's shadow
+                        // frustum override actually runs; the || short-circuits, so it only fires for
+                        // off-camera sections when shadows are on.
+                        final boolean visible =
+                            isShipSectionVisible(frustum, shipToWorld, chunkX, sectionY, chunkZ)
+                                || (shadowFrustum != null
+                                    && isShipSectionVisibleShadow(shadowFrustum, shipToWorld,
+                                        chunkX, sectionY, chunkZ));
 
                         CachedSection cached = sections.get(key);
                         if (cached == null) {
@@ -406,11 +480,10 @@ public final class ShipTerrainMeshCache {
                         for (final Built b : cached.built) {
                             emit(bufferSource.getBuffer(b.type), pose, b);
                         }
-                        // Solid/cutout: queue a GPU draw with this section's full model-view. Copy the
-                        // pose (scratchPose is mutated next section) and pre-multiply the camera matrix.
+                        // Solid/cutout: queue a GPU draw with this section's RAW ship pose. Copy it (scratchPose
+                        // is mutated next section); the camera/shadow model-view is composed per pass at flush.
                         if (!cached.gpuMeshes.isEmpty()) {
-                            gpuDrawQueue.add(new GpuDrawItem(
-                                new Matrix4f(camModelView).mul(pose.pose()), cached.gpuMeshes));
+                            gpuDrawQueue.add(new GpuDrawItem(new Matrix4f(pose.pose()), cached.gpuMeshes));
                         }
                     }
                 });
@@ -426,9 +499,12 @@ public final class ShipTerrainMeshCache {
             // the draw is correct -- the camera model-view doesn't change between here and that point.)
 
             evictStale();
+            cacheBackoff = 1; // a clean frame clears the backoff so the next failure retries quickly
         } catch (final Throwable t) {
-            disabled = true;
-            LOGGER.error("Ship terrain mesh cache failed; falling back to immediate-mode ship rendering", t);
+            cacheCooldown = RETRY_BASE_FRAMES * cacheBackoff;
+            cacheBackoff = Math.min(cacheBackoff * 2, RETRY_BACKOFF_MAX);
+            LOGGER.error("Ship terrain mesh cache failed; using immediate per-block fallback for {} frames before retrying",
+                cacheCooldown, t);
             clear();
         }
     }
@@ -436,29 +512,49 @@ public final class ShipTerrainMeshCache {
     /**
      * Flush this frame's queued ship-terrain GPU draws. Called from MixinFeatureRenderDispatcher at
      * {@code renderAllFeatures} TAIL -- the point where vanilla flushes the immediate ship terrain and
-     * Iris has its gbuffer target bound. Drawing earlier (at submitBlockEntities time) lands on the
-     * wrong target under shaders. No-op when the queue is empty: GPU path off, no ships, or already
-     * flushed this frame. Clears the queue afterward so a second renderAllFeatures call in the same
-     * frame (there are two) can't redraw it; self-gating on emptiness keeps it order-independent.
+     * Iris has its gbuffer target bound. Drawing earlier (at submitBlockEntities time) lands on the wrong
+     * target under shaders. The hook fires in BOTH the main gbuffer pass and Iris's shadow pass; per-pass
+     * flags draw the queue at most once per pass, and the queue is retained until the next renderAll so both
+     * passes can use it. In the shadow pass the queue is only drawn when Ship Shadows is enabled + registered.
      */
     public void flushDeferredGpuDraws() {
-        if (disabled || gpuDrawQueue.isEmpty()) {
+        if (gpuDrawQueue.isEmpty()) {
+            return;
+        }
+        final boolean shadow = ShipTerrainIrisPipeline.isShadowPass();
+        if (shadow) {
+            // Only draw into the shadow map when shadows are enabled AND our shadow pipeline registered;
+            // otherwise skip entirely (drawing with the main program/transform would corrupt the shadow map).
+            if (!ShipTerrainIrisPipeline.shadowReady() || !VSGameConfig.CLIENT.getRenderShipShadows()
+                || flushedShadow) {
+                return;
+            }
+        } else if (flushedMain) {
             return;
         }
         try {
-            flushGpuDraws();
+            flushGpuDraws(shadow);
+            gpuBackoff = 1; // a clean flush clears the backoff
+            if (shadow) {
+                flushedShadow = true;
+            } else {
+                flushedMain = true;
+            }
         } catch (final Throwable t) {
-            // A GPU failure degrades to the immediate path (still correct), not a full disable.
-            LOGGER.error("VS ship GPU draw failed; switching ship terrain to immediate re-emit", t);
-            gpuPath = false;
+            // A GPU failure parks the persistent-GPU path for a cooldown, degrading to the immediate re-emit
+            // (still correct), then retries -- instead of disabling it for the rest of the session.
+            gpuPathCooldown = RETRY_BASE_FRAMES * gpuBackoff;
+            gpuBackoff = Math.min(gpuBackoff * 2, RETRY_BACKOFF_MAX);
+            LOGGER.error("VS ship GPU draw failed; using immediate re-emit for {} frames before retrying",
+                gpuPathCooldown, t);
             clear();
-        } finally {
-            gpuDrawQueue.clear();
+            gpuDrawQueue.clear(); // the queue's mesh refs are now invalid; the flags reset next renderAll
         }
         if (gpuFormatMismatch) {
             // Shaderpack toggled: baked bytes no longer match the program -- re-bake fresh.
             gpuFormatMismatch = false;
             clear();
+            gpuDrawQueue.clear();
         }
     }
 
@@ -468,8 +564,15 @@ public final class ShipTerrainMeshCache {
      * textures and index buffer. The per-section model-view is supplied through the DynamicTransforms
      * uniform; pipeline + textures are (re)bound only when the pipeline changes.
      */
-    private void flushGpuDraws() {
+    private void flushGpuDraws(final boolean shadow) {
         final DynamicUniforms uniforms = RenderSystem.getDynamicUniforms();
+
+        // The base model-view composed onto each section's raw ship pose: the camera (main pass) or the sun
+        // POV (shadow pass). For shadows Iris's GL encoder also redirects this draw onto the shadow framebuffer.
+        final Matrix4f baseModelView = shadow ? ShipTerrainIrisPipeline.shadowModelView() : frameCamModelView;
+        if (baseModelView == null) {
+            return; // shadow pass but the shadow model-view wasn't available this frame
+        }
 
         // PHASE 1 -- everything that MAPS a GPU buffer (the transforms + sizing the sequential index
         // buffer) MUST happen before a render pass is opened; mapping inside an open pass throws
@@ -485,8 +588,9 @@ public final class ShipTerrainMeshCache {
         int maxIndexCount = 0;
         for (int i = 0; i < n; i++) {
             final GpuDrawItem item = gpuDrawQueue.get(i);
+            final Matrix4f modelView = new Matrix4f(baseModelView).mul(item.shipPose());
             transforms[i] =
-                new DynamicUniforms.Transform(item.modelView(), WHITE, NO_MODEL_OFFSET, IDENTITY_TEX);
+                new DynamicUniforms.Transform(modelView, WHITE, NO_MODEL_OFFSET, IDENTITY_TEX);
             for (final GpuMesh gm : item.meshes()) {
                 if (gm.indexCount > maxIndexCount) {
                     maxIndexCount = gm.indexCount;
@@ -583,6 +687,24 @@ public final class ShipTerrainMeshCache {
         return isShipBoxVisible(frustum, shipToWorld, x0, y0, z0, x0 + 16.0, y0 + 16.0, z0 + 16.0);
     }
 
+    /**
+     * Section visibility against an Iris SHADOW frustum. Unlike {@link #isShipSectionVisible}, this calls the
+     * public {@link Frustum#isVisible} so the shadow frustum's overridden cull runs: Iris's shadow frustums
+     * override only {@code isVisible(AABB)} and build the base {@code Frustum} from identity matrices, so the
+     * allocation-free {@code cubeInFrustum} invoker would test an identity clip cube and wrongly cull
+     * everything. Allocates one AABB; only called (via {@code ||} short-circuit) for sections the camera can't
+     * see, while ship shadows are enabled, so the cost is bounded by the shadow distance.
+     */
+    private boolean isShipSectionVisibleShadow(final Frustum shadowFrustum, final Matrix4dc shipToWorld,
+        final int sx, final int sy, final int sz) {
+        final double x0 = sx * 16.0;
+        final double y0 = sy * 16.0;
+        final double z0 = sz * 16.0;
+        shipToWorld.transformAab(x0, y0, z0, x0 + 16.0, y0 + 16.0, z0 + 16.0, cullMin, cullMax);
+        return shadowFrustum.isVisible(new net.minecraft.world.phys.AABB(
+            cullMin.x, cullMin.y, cullMin.z, cullMax.x, cullMax.y, cullMax.z));
+    }
+
     /** Frustum-test a shipyard-space box transformed into rendered world space. Null frustum = visible. */
     private boolean isShipBoxVisible(final Frustum frustum, final Matrix4dc shipToWorld,
         final double minX, final double minY, final double minZ,
@@ -646,6 +768,17 @@ public final class ShipTerrainMeshCache {
         final Map<RenderType, ByteBufferBuilder> backings = new HashMap<>(4);
         final PoseStack pose = new PoseStack();
 
+        // Under shaders, capture the shaderpack block id per vertex so repack can fill mc_Entity (emissive/
+        // material). currentBlockId is set once per block below; builderFor wraps each builder in a counter that
+        // tags every vertex it emits with it. Off the Iris path (counters == null) builderFor returns the raw
+        // builder unchanged -- no overhead and identical behaviour to before.
+        final boolean captureBlockIds = frameBlockIds;
+        final Map<RenderType, CountingVertexConsumer> counters = captureBlockIds ? new HashMap<>(4) : null;
+        final short[] currentBlockId = {-1};
+        // Resolve the shaderpack block-id map ONCE per bake (instead of a reflective lookup per block); the
+        // per-block id is then a plain map.getInt. Null when not capturing / no pack -> every id stays -1.
+        final Object blockIdMap = captureBlockIds ? ShipTerrainIrisPipeline.blockIdMap() : null;
+
         // Render block models through Fabric's terrain-like model renderer (the FRAPI terrain context)
         // so connected-texture mods like Fusion -- which hook that context, NOT the plain block path
         // used by renderBatched -- apply their connections to ship blocks. Quads are routed per
@@ -655,7 +788,7 @@ public final class ShipTerrainMeshCache {
         final FabricBlockModelRenderer fabricModelRenderer =
             (FabricBlockModelRenderer) (Object) dispatcher.getModelRenderer();
         final BlockVertexConsumerProvider ctmConsumers =
-            layer -> builderFor(builders, backings, movingBlockRenderType(layer));
+            layer -> builderFor(builders, backings, counters, currentBlockId, movingBlockRenderType(layer));
 
         try {
             for (int lx = 0; lx < 16; lx++) {
@@ -665,6 +798,9 @@ public final class ShipTerrainMeshCache {
                         if (state.isAir()) {
                             continue;
                         }
+                        // Tag this block's vertices (both the fluid and model emit below) with its shaderpack
+                        // block id; -1 off the Iris path / no pack / unmapped state (neutral mc_Entity).
+                        currentBlockId[0] = ShipTerrainIrisPipeline.shaderBlockId(blockIdMap, state);
                         final BlockPos posWorld = new BlockPos(baseX + lx, baseY + ly, baseZ + lz);
 
                         final FluidState fluidState = state.getFluidState();
@@ -672,8 +808,8 @@ public final class ShipTerrainMeshCache {
                             // LiquidBlockRenderer emits section-local [0,16] coords (no PoseStack), which
                             // is exactly our cache space -- feed it straight in.
                             final RenderType rt = fluidRenderType(fluidState);
-                            dispatcher.renderLiquid(posWorld, level, builderFor(builders, backings, rt),
-                                state, fluidState);
+                            dispatcher.renderLiquid(posWorld, level,
+                                builderFor(builders, backings, counters, currentBlockId, rt), state, fluidState);
                         }
 
                         if (state.getRenderShape() == RenderShape.MODEL) {
@@ -703,7 +839,8 @@ public final class ShipTerrainMeshCache {
                     // applies to every mesh; anything else falls back to the immediate path.
                     if (frameGpuEffective && type != RenderTypes.translucentMovingBlock()
                         && mesh.drawState().mode() == VertexFormat.Mode.QUADS) {
-                        final GpuMesh gm = uploadGpuMesh(type, mesh);
+                        final short[] ids = blockIdsFor(counters, type, mesh.drawState().vertexCount());
+                        final GpuMesh gm = uploadGpuMesh(type, mesh, ids);
                         if (gm != null) {
                             result.gpuMeshes.add(gm);
                         }
@@ -729,17 +866,18 @@ public final class ShipTerrainMeshCache {
      * retain the MeshData past this method. Only reached when no shaderpack is active (the bake routing
      * gates on frameGpuEffective), so the bytes are always the vanilla moving-block layout.
      */
-    private GpuMesh uploadGpuMesh(final RenderType type, final MeshData mesh) {
+    private GpuMesh uploadGpuMesh(final RenderType type, final MeshData mesh, final short[] blockIds) {
         final MeshData.DrawState ds = mesh.drawState();
         if (ds.indexCount() <= 0) {
             return null;
         }
-        // Under a shaderpack, repack BLOCK -> Iris TERRAIN (computing the shader extras) so the
-        // Iris-assigned pipeline shades the hull; otherwise keep the vanilla moving-block layout.
+        // Under a shaderpack, repack BLOCK -> Iris TERRAIN (computing the shader extras + mc_Entity block id)
+        // so the Iris-assigned pipeline shades the hull; otherwise keep the vanilla moving-block layout.
         final ByteBuffer verts;
         final int vertexSize;
         if (frameIrisGpu) {
-            verts = ShipTerrainIrisPipeline.repackBlockToTerrain(mesh.vertexBuffer(), ds.vertexCount(), ds.format());
+            verts = ShipTerrainIrisPipeline.repackBlockToTerrain(
+                mesh.vertexBuffer(), ds.vertexCount(), ds.format(), blockIds);
             vertexSize = ShipTerrainIrisPipeline.terrainStride();
         } else {
             verts = mesh.vertexBuffer();
@@ -818,7 +956,9 @@ public final class ShipTerrainMeshCache {
     }
 
     private static VertexConsumer builderFor(final Map<RenderType, BufferBuilder> builders,
-        final Map<RenderType, ByteBufferBuilder> backings, final RenderType rt) {
+        final Map<RenderType, ByteBufferBuilder> backings,
+        final Map<RenderType, CountingVertexConsumer> counters, final short[] currentBlockId,
+        final RenderType rt) {
 
         BufferBuilder builder = builders.get(rt);
         if (builder == null) {
@@ -828,7 +968,122 @@ public final class ShipTerrainMeshCache {
             builders.put(rt, builder);
             backings.put(rt, backing);
         }
-        return builder;
+        if (counters == null) {
+            return builder;
+        }
+        // Iris path: hand out (and reuse) one counter per render type so every vertex of every block that
+        // uses this type is tagged with the current block id, in emission order.
+        CountingVertexConsumer counter = counters.get(rt);
+        if (counter == null) {
+            counter = new CountingVertexConsumer(builder, currentBlockId);
+            counters.put(rt, counter);
+        }
+        return counter;
+    }
+
+    /** The per-vertex block-id stream captured for {@code type}, or null when unavailable or length-mismatched. */
+    private static short[] blockIdsFor(final Map<RenderType, CountingVertexConsumer> counters,
+        final RenderType type, final int vertexCount) {
+        if (counters == null) {
+            return null;
+        }
+        final CountingVertexConsumer counter = counters.get(type);
+        if (counter == null) {
+            return null;
+        }
+        final short[] ids = counter.ids();
+        if (ids.length != vertexCount) {
+            // A vertex bypassed the counter (e.g. a future FRAPI change): drop to neutral rather than mislabel.
+            if (!warnedBlockIdMismatch) {
+                warnedBlockIdMismatch = true;
+                LOGGER.warn("VS ship terrain: captured block-id count {} != mesh vertex count {} for {}; "
+                    + "mc_Entity left neutral (no emissive id) for affected meshes", ids.length, vertexCount, type);
+            }
+            return null;
+        }
+        return ids;
+    }
+
+    /** One-shot guard so a block-id / vertex-count desync warns once per session, not per section. */
+    private static boolean warnedBlockIdMismatch;
+
+    /**
+     * Wraps a bake BufferBuilder to record every vertex's shaderpack block id (read from a shared 1-element
+     * holder set once per block) so repack can write mc_Entity. Counting hooks ONLY the two vertex-starting
+     * addVertex overloads -- the 3-arg chained form (immediate / liquid path) and the 11-arg form (Indigo /
+     * FRAPI / CTM path) -- so each vertex is recorded exactly once, in emission order, which equals the order
+     * repack walks the built mesh. Every other VertexConsumer method delegates unchanged (the interface
+     * defaults decompose into these two), so the vertex DATA is identical; we only observe the id stream.
+     */
+    private static final class CountingVertexConsumer implements VertexConsumer {
+        private final VertexConsumer delegate;
+        private final short[] currentBlockId;
+        private final ShortArrayList ids = new ShortArrayList();
+
+        CountingVertexConsumer(final VertexConsumer delegate, final short[] currentBlockId) {
+            this.delegate = delegate;
+            this.currentBlockId = currentBlockId;
+        }
+
+        short[] ids() {
+            return ids.toShortArray();
+        }
+
+        @Override
+        public VertexConsumer addVertex(final float x, final float y, final float z) {
+            ids.add(currentBlockId[0]);
+            delegate.addVertex(x, y, z);
+            return this;
+        }
+
+        @Override
+        public void addVertex(final float x, final float y, final float z, final int color, final float u,
+            final float v, final int overlay, final int light, final float nx, final float ny, final float nz) {
+            ids.add(currentBlockId[0]);
+            delegate.addVertex(x, y, z, color, u, v, overlay, light, nx, ny, nz);
+        }
+
+        @Override
+        public VertexConsumer setColor(final int red, final int green, final int blue, final int alpha) {
+            delegate.setColor(red, green, blue, alpha);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(final int argb) {
+            delegate.setColor(argb);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setLineWidth(final float width) {
+            delegate.setLineWidth(width);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(final float u, final float v) {
+            delegate.setUv(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(final int u, final int v) {
+            delegate.setUv1(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv2(final int u, final int v) {
+            delegate.setUv2(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setNormal(final float x, final float y, final float z) {
+            delegate.setNormal(x, y, z);
+            return this;
+        }
     }
 
     /** Map a chunk-section render layer to the matching MOVING-block render type used by ship terrain. */
@@ -856,6 +1111,14 @@ public final class ShipTerrainMeshCache {
         final CachedSection removed = sections.remove(SectionPos.asLong(sectionX, sectionY, sectionZ));
         if (removed != null) {
             removed.close();
+            // The pending GPU draw queue (retained across frames for the shadow pass) may reference this
+            // just-closed section; drop ONLY its item so a deferred flush can't draw the freed buffer, while
+            // leaving the rest of the ship's queued sections intact. (Clearing the WHOLE queue here made the
+            // shadow pass -- which draws the PREVIOUS frame's queue -- go empty for a frame on every light
+            // update, blinking the whole ship's shadow. Per-item removal keeps the freed-buffer guarantee with
+            // no whole-ship blink; only the one changed section's shadow drops, for the existing ~1-frame lag.)
+            // Identity match is exact: the queue stores cached.gpuMeshes by reference (see the renderAll enqueue).
+            gpuDrawQueue.removeIf(item -> item.meshes() == removed.gpuMeshes);
         }
     }
 
