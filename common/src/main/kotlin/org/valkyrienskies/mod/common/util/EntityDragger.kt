@@ -35,6 +35,12 @@ object EntityDragger {
     // How much we decay the addedMovement each tick after player hasn't collided with a ship for at least 10 ticks.
     private const val ADDED_MOVEMENT_DECAY = 0.9
 
+    // Horizontal slack (ship-space blocks) added to the grounded on-hull test so a player whose bounding box
+    // overhangs a deck edge -- or who stands on a thin/edge block that onPos can't resolve -- still reads as
+    // "on the hull" instead of being false-released. Stacks on top of the per-face influenceExtend config; it
+    // is purely the always-on bounding-box-overhang allowance so the edge stays sticky even at config 0.
+    private const val HULL_EDGE_MARGIN = 0.5
+
 
     /**
      * Drag these entities with the ship they're standing on.
@@ -82,10 +88,29 @@ object EntityDragger {
                 val hullShip = entity.level().shipObjectWorld.allShips.getById(carriedShipId)
                 val hullAABB = hullShip?.shipAABB
                 val onCarriedHull = if (hullShip != null && hullAABB != null) {
+                    // Tests the player's CURRENT position (after their own movement this tick, before the carry) --
+                    // NOT (xo,yo,zo). Mech 1 below re-anchors off (xo,yo,zo); this gate deliberately uses the live
+                    // position so a player who has just walked off the rim releases the same tick.
                     val wp = entity.position()
-                    val lp = hullShip.worldToShip.transformPosition(wp.x, wp.y, wp.z, Vector3d())
-                    lp.x >= hullAABB.minX() && lp.x <= hullAABB.maxX() + 1.0 &&
-                        lp.z >= hullAABB.minZ() && lp.z <= hullAABB.maxZ() + 1.0 &&
+                    // FRAME-CONSISTENCY -- this is what actually fixes the speed-dependent stern drop. The player's
+                    // pre-carry world position is where LAST tick's carry placed them, i.e. it is anchored to the
+                    // ship's PREVIOUS-tick transform. Recover their ship-local standing spot with that SAME
+                    // transform. Using the CURRENT worldToShip (as the old code did) measures a last-tick world
+                    // point against a transform the ship has already advanced past, so the apparent ship-local
+                    // position slides backward by one tick of ship travel -- the faster the ship, the further back
+                    // -- pushing a player standing near the stern below minZ and false-releasing them though they
+                    // never left the deck. prevTickTransform cancels the ship's own per-tick motion out of the
+                    // measurement (it is the same transform Mech 1's re-anchor already trusts).
+                    val lp = hullShip.prevTickTransform.worldToShip.transformPosition(wp.x, wp.y, wp.z, Vector3d())
+                    // Small always-on horizontal slack so a bounding box that legitimately overhangs the deck rim
+                    // (or sits on a thin/edge block onPos can't resolve) still reads as on-hull. Deliberately NOT
+                    // widened by influenceExtend: the stern drop was a measurement error (fixed above), not a
+                    // too-tight border, and inflating this GROUNDED release test by the full border would keep a
+                    // player carried while standing on an adjacent dock/shore and yank them when the ship moves.
+                    // (The airborne gate below still owns influenceExtend, where a transient carry zone is wanted.)
+                    // Y keeps its own feet-on-deck band (the bug is horizontal; -1/+2 already handles standing height).
+                    lp.x >= hullAABB.minX() - HULL_EDGE_MARGIN && lp.x <= hullAABB.maxX() + 1.0 + HULL_EDGE_MARGIN &&
+                        lp.z >= hullAABB.minZ() - HULL_EDGE_MARGIN && lp.z <= hullAABB.maxZ() + 1.0 + HULL_EDGE_MARGIN &&
                         lp.y >= hullAABB.minY() - 1.0 && lp.y <= hullAABB.maxY() + 2.0
                 } else {
                     false
