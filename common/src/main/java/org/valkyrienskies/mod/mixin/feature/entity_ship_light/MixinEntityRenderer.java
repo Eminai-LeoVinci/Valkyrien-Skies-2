@@ -7,10 +7,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.valkyrienskies.core.api.ships.Ship;
 import org.valkyrienskies.mod.api.ValkyrienSkies;
+import org.valkyrienskies.mod.common.VSGameUtilsKt;
+import org.valkyrienskies.mod.common.entity.ShipMountedToData;
 
 /**
  * Entity light on ships.
@@ -40,6 +43,21 @@ public abstract class MixinEntityRenderer {
 
     @ModifyReturnValue(method = "getBlockLightLevel", at = @At("RETURN"))
     private int vs$addShipBlockLight(final int original, final Entity entity, final BlockPos worldPos) {
+        // MOUNTED RIDER (e.g. piloting the Eureka helm): a ship-seat passenger is NOT carried by EntityDragger
+        // (the dragger gates on vehicle == null); instead VS2's MixinGameRenderer.preRender re-anchors the
+        // rider's live position to the ship's RENDER (interpolated) transform EVERY FRAME, so the world-space
+        // probe path below no longer round-trips through the PHYSICS getWorldToShip -- the sampled shipyard
+        // block oscillates by the sub-tick render-vs-physics delta = the original flicker, back only while
+        // mounted (scales with ship speed). Sample BLOCK light directly at the seat's frame-stable ship-space
+        // mount position (no transform round-trip), matching the standing case's stability. getShipMountedToData
+        // is non-null ONLY for ship mounts (normal boats/horses return null -> fall through to the probe path).
+        final ShipMountedToData mounted = VSGameUtilsKt.getShipMountedToData(entity, null);
+        if (mounted != null) {
+            final Vector3dc m = mounted.getMountPosInShip();
+            return Math.max(original, entity.level().getBrightness(
+                LightLayer.BLOCK, BlockPos.containing(m.x(), m.y(), m.z())));
+        }
+
         final Vec3 probe = entity.getLightProbePosition(1.0F);
         int best = original;
         for (final Ship ship : ValkyrienSkies.getShipsIntersecting(entity.level(), probe.x, probe.y, probe.z)) {
