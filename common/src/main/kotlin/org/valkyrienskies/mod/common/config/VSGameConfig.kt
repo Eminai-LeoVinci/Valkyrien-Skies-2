@@ -401,6 +401,11 @@ object VSGameConfig {
                 description = "The permission level required to use the /vs dry command. Must be 0 <= x <= 4"
             )
             var dryShipCommandPerms = 2
+
+            @ConfigEntry(
+                description = "The permission level required to use the /vs desnow command. Must be 0 <= x <= 4"
+            )
+            var desnowShipCommandPerms = 2
         }
     }
 

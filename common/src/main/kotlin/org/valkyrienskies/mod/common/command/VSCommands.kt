@@ -15,6 +15,7 @@ import org.valkyrienskies.core.api.world.properties.DimensionId
 import org.valkyrienskies.core.internal.ShipTeleportData
 import org.valkyrienskies.mod.common.command.commands.BackendCommand
 import org.valkyrienskies.mod.common.command.commands.DeleteCommand
+import org.valkyrienskies.mod.common.command.commands.DesnowCommand
 import org.valkyrienskies.mod.common.command.commands.DryCommand
 import org.valkyrienskies.mod.common.command.commands.GetAirCommand
 import org.valkyrienskies.mod.common.command.commands.GetGravityCommand
@@ -40,6 +41,7 @@ object VSCommands {
 
         BackendCommand.register(vs)
         DeleteCommand.register(vs)
+        DesnowCommand.register(vs)
         DryCommand.register(vs)
         GetAirCommand.register(vs)
         GetGravityCommand.register(vs)
