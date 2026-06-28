@@ -29,7 +29,12 @@ public class MixinAvatarRenderer {
         // reliably reach the client -- but the seat entity itself is delivered (the player is
         // mounted on it), so this instanceof check is reliable. (The previous air-block probe
         // read shipyard-space coordinates and regressed the helm rider to a seated pose.)
-        final boolean standing = vehicle instanceof ShipMountingEntity;
+        // Helm seats render the rider STANDING at the wheel; a reconnect PASSENGER seat renders them SITTING
+        // (arms hang at the side) -- so only force the standing helmsman pose for non-passenger seats. The
+        // passenger-seat flag is synced, and the seat the local player rides is delivered to the client, so it
+        // reads reliably here.
+        final boolean standing = vehicle instanceof ShipMountingEntity
+            && !((ShipMountingEntity) vehicle).vs$isPassengerSeat();
         ((ShipMountPoseRenderState) state).vs$setShipMountStanding(standing);
         if (standing) {
             // Kill the seated pose at its SOURCE. HumanoidModel.setupAnim only bends the legs

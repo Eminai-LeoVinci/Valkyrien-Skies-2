@@ -139,7 +139,6 @@ sourceSets {
             exclude "org/valkyrienskies/mod/mixin/feature/fluid_camera_fix/MixinCamera.java"
             exclude "org/valkyrienskies/mod/mixin/feature/hit_outline/MixinLevelRenderer.java"
             exclude "org/valkyrienskies/mod/mixin/feature/ship_debug_overlay/MixinDebugScreenOverlay.java"
-            exclude "org/valkyrienskies/mod/mixin/feature/teleport_reconnected_player_to_ship/MixinServerPlayer.java"
             exclude "org/valkyrienskies/mod/mixin/feature/wave_spawning/MixinRaid.java"
             exclude "org/valkyrienskies/mod/mixin/feature/wave_spawning/MixinRaids.java"
             exclude "org/valkyrienskies/mod/mixin/feature/world_border/MixinLevel.java"

@@ -83,6 +83,7 @@
     "feature.structure_template.PaletteInvoker",
     "feature.structure_template.StructureTemplateMixin",
     "feature.submarines.MixinWaterFluid",
+    "feature.teleport_reconnected_player_to_ship.MixinServerPlayer",
     "feature.thrown_velocity.MixinEntity",
     "feature.thrown_velocity.MixinPlayer",
     "feature.thrown_velocity.MixinProjectile",
