@@ -10,6 +10,7 @@ import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.network.protocol.game.ServerboundMoveVehiclePacket;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
@@ -55,11 +56,11 @@ public abstract class MixinLocalPlayer extends Entity implements IEntityDragging
                 }
             }
             if (realArg instanceof ServerboundMovePlayerPacket movePacket) {
-                // Don't force the on-ground flag while the player is airborne by intent (gliding,
-                // or jumping up off the deck): forcing it makes the server reject/cancel elytra
-                // flight near a ship.
+                // Don't force the on-ground flag while the player is airborne by intent (gliding, creative-flying,
+                // or jumping up off the deck): forcing it makes the server reject/cancel elytra/creative flight
+                // near a ship.
                 final boolean draggedAndGrounded = getDraggingInformation().isEntityBeingDraggedByAShip()
-                    && !vs$isGliding() && getDeltaMovement().y <= 0.0;
+                    && !vs$isGliding() && !((Player) (Object) this).getAbilities().flying && getDeltaMovement().y <= 0.0;
                 final boolean isOnGround = movePacket.isOnGround() || draggedAndGrounded;
                 if (movePacket.hasPosition() && movePacket.hasRotation()) {
                     //posrot

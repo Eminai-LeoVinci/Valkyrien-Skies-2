@@ -57,7 +57,7 @@ class ShipCreatorItem(
                 // the ship's chunks load. Without this, the player's movement is cancelled
                 // by isCollidingWithUnloadedShips() because the new ship exists in allShips
                 // but its chunks haven't reached FULL status yet.
-                EntityShipCollisionUtils.markShipAsRecentlySpawned(serverShip.id, level.server.tickCount.toLong())
+                EntityShipCollisionUtils.markShipAsRecentlySpawned(serverShip.id, level.gameTime)
 
                 val centerPos = serverShip.chunkClaim.getCenterBlockCoordinates(level.yRange).toBlockPos()
                 org.slf4j.LoggerFactory.getLogger("VS2").info(" ShipCreatorItem: relocating block from $blockPos to $centerPos in shipyard")

@@ -29,6 +29,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.valkyrienskies.core.api.ships.ClientShip;
 import org.valkyrienskies.core.internal.world.VsiClientShipWorld;
 import org.valkyrienskies.mod.client.IVSCamera;
+import org.valkyrienskies.mod.client.ShipCameraZoom;
 import org.valkyrienskies.mod.common.IShipObjectWorldClientProvider;
 import org.valkyrienskies.mod.common.entity.ShipMountedToData;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
@@ -240,6 +241,10 @@ public abstract class MixinGameRenderer {
         }
 
         ((IVSCamera) camera).resetShipMountedRenderTransform();
+        // Recomputed authoritatively each frame: only the ship-mounted third-person paths below set this true
+        // (every early return that falls through to vanilla camera leaves it false), so the scroll-zoom handler
+        // keys off exactly when MixinCamera applies the zoom multiplier.
+        ShipCameraZoom.setShipCameraActive(false);
 
         final ClientLevel clientLevel = minecraft.level;
         final Entity player = minecraft.player;
@@ -300,6 +305,8 @@ public abstract class MixinGameRenderer {
             mirroredForSetup = cameraType.isMirrored();
         }
 
+        // Immersive ship third-person view active -> the scroll wheel zooms this camera (MixinMouseHandler).
+        ShipCameraZoom.setShipCameraActive(thirdPersonForSetup);
         ((IVSCamera) camera).setupWithShipMounted(
             this.minecraft.level,
             this.minecraft.getCameraEntity() == null ? this.minecraft.player : this.minecraft.getCameraEntity(),

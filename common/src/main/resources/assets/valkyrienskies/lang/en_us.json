@@ -61,6 +61,8 @@
   "command.valkyrienskies.set_splitting": "Set splitting to %s on %s ships",
   "command.valkyrienskies.dry.no_blocks": "Ship has no blocks!",
   "command.valkyrienskies.dry.success": "Successfully dried %s blocks",
+  "command.valkyrienskies.desnow.no_blocks": "Ship has no blocks!",
+  "command.valkyrienskies.desnow.success": "Successfully cleared %s snow layers",
 
   "misc.valkyrienskies.create.deployer_working_mode": "Ship Behaviour",
   "misc.valkyrienskies.create.deployer_working_mode.original": "Place on current ship",

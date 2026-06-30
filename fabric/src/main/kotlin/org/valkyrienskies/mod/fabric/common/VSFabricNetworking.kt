@@ -70,7 +70,10 @@ class VSFabricNetworking(
     }
 
     fun sendToClient(data: ByteBuf, player: VsiPlayer) {
-        val serverPlayer = (player as MinecraftPlayer).player as ServerPlayer
+        // Synthetic ship observers (ShipActivationManager's always-active mechanism) are VsiPlayers
+        // with no client connection. vs-core may still try to push ship sync to them, so drop any
+        // non-real player here instead of ClassCast-ing.
+        val serverPlayer = (player as? MinecraftPlayer)?.player as? ServerPlayer ?: return
         if (VSPacketFragmenter.needsSplitting(data)) {
             for (fragment in VSPacketFragmenter.split(data.copy())) {
                 ServerPlayNetworking.send(serverPlayer, VSFragmentPacket(fragment.copyToByteArray()))

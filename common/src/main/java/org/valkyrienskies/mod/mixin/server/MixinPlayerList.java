@@ -24,6 +24,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.valkyrienskies.core.api.ships.LoadedShip;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
+import org.valkyrienskies.mod.common.util.EntityShipCollisionUtils;
+import org.valkyrienskies.mod.common.world.ShipActivationManager;
 import org.valkyrienskies.mod.common.entity.handling.VSEntityManager;
 import org.valkyrienskies.mod.common.util.MinecraftPlayer;
 import org.valkyrienskies.mod.util.KrunchSupport;
@@ -60,6 +62,19 @@ public abstract class MixinPlayerList {
                     .withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
         }
         VSEntityManager.INSTANCE.syncHandlers(wrapped);
+
+        // Login fall-through fix: a ship's voxel-collision chunks are still loading (async) when a player joins,
+        // so on-ship mobs/animals/armor-stands tick gravity into empty space and fall before the deck collision
+        // is ready. Arm a short, bounded gravity-hold (markShipAsRecentlySpawned -- the same bounded hold the
+        // collision gate applies on assembly) so on-ship entities stay put until the collision loads. It self-
+        // expires (~100 ticks), so there is no permanent freeze if the player logs straight back out.
+        final long vs$now = player.serverLevel().getGameTime();
+        for (final LoadedShip ship : VSGameUtilsKt.getShipObjectWorld(player.level()).getLoadedShips()) {
+            // markControlled front-runs the normal aboard-detection so SHIP_ACTIVE_VOXEL lands next tick,
+            // eagerly pinning each loaded ship's chunks while the deck collision finishes loading.
+            ShipActivationManager.markControlled(ship.getId());
+            EntityShipCollisionUtils.markShipAsRecentlySpawned(ship.getId(), vs$now);
+        }
     }
 
     /**

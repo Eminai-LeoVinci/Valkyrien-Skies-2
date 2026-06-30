@@ -26,15 +26,20 @@ import org.valkyrienskies.mod.common.vsCore
 import org.valkyrienskies.mod.mixinducks.feature.tickets.PlayerKnownShipsDuck
 import org.valkyrienskies.mod.util.BugFixUtil
 import java.util.concurrent.ConcurrentHashMap
-import java.util.stream.Stream
+import java.util.concurrent.ConcurrentLinkedQueue
 
 object EntityShipCollisionUtils {
 
     /**
-     * Tracks recently-spawned ships by their ID and the tick they were created.
-     * Ships in this grace period are excluded from unloaded-ship collision checks
-     * to prevent freezing the player when a new ship is assembled nearby but its
-     * chunks haven't loaded yet.
+     * Tracks recently-spawned ships by their ID and the game-tick they were created. Ships within the
+     * grace period are excluded from unloaded-ship collision checks to prevent freezing the player when
+     * a new ship is assembled nearby but its chunks haven't loaded yet.
+     *
+     * Entries expire lazily in [isInSpawnGracePeriod] against the level's current gameTime (the same
+     * monotonic per-tick clock the callers stamp). The old version compared a tick stamp that was never
+     * cleaned up -- [isInSpawnGracePeriod] only did containsKey and [cleanupExpiredGracePeriods] had no
+     * callers -- so every assembled ship stayed in "grace" forever and the unloaded-ship movement guard
+     * was permanently disabled for it. (Tick-based, NOT nanoTime: matches DST's existing gameTime model.)
      */
     private val recentlySpawnedShips = ConcurrentHashMap<ShipId, Long>()
     private const val SPAWN_GRACE_PERIOD_TICKS = 100L // ~5 seconds
@@ -45,15 +50,13 @@ object EntityShipCollisionUtils {
     }
 
     @JvmStatic
-    fun cleanupExpiredGracePeriods(currentTick: Long) {
-        recentlySpawnedShips.entries.removeIf { (_, spawnTick) ->
-            currentTick - spawnTick > SPAWN_GRACE_PERIOD_TICKS
+    fun isInSpawnGracePeriod(shipId: ShipId, currentTick: Long): Boolean {
+        val spawnTick = recentlySpawnedShips[shipId] ?: return false
+        if (currentTick - spawnTick > SPAWN_GRACE_PERIOD_TICKS) {
+            recentlySpawnedShips.remove(shipId)
+            return false
         }
-    }
-
-    @JvmStatic
-    fun isInSpawnGracePeriod(shipId: ShipId): Boolean {
-        return recentlySpawnedShips.containsKey(shipId)
+        return true
     }
     private const val PARTICLE_COLLISION_BOX_EXPANSION = 0.00390625 //1.0 / 256.0
 
@@ -74,13 +77,46 @@ object EntityShipCollisionUtils {
         return box
     }
 
-    private fun getAllShipsIntersectingEvenIfNotYetFullyLoaded(level: Level, aabb: AABBd): Stream<Ship> {
-        // shipAABB and worldAABB are sometimes too small when ship was just loaded for the first time.
-        // To circumvent this, we use activeChunksSet to find a rougher bounding box which should always contain the entire ship.
-        return level.allShips.stream().filter { ship ->
-            ship.chunkClaimDimension == level.dimensionId &&
-            getShipyardChunkAABBAround(ship).toAABBd(AABBd()).transform(ship.shipToWorld).intersectsAABB(aabb)
+    /**
+     * Per-ship, per-tick cache of the rough world-space AABB derived from the ship's active chunk set.
+     * Rebuilding the chunk-set union for EVERY entity move (this sits at the HEAD of Entity.move()) was
+     * the single hottest per-entity cost on the server tick; the underlying data only changes once per
+     * tick. Client and server keep separate caches (singleplayer runs both in one JVM, transforms differ).
+     */
+    private class RoughAABBEntry {
+        var gameTime = Long.MIN_VALUE
+        val aabb = AABBd()
+    }
+
+    private val roughAABBCacheServer = ConcurrentHashMap<ShipId, RoughAABBEntry>()
+    private val roughAABBCacheClient = ConcurrentHashMap<ShipId, RoughAABBEntry>()
+    private var lastCacheSweepServer = Long.MIN_VALUE
+    private var lastCacheSweepClient = Long.MIN_VALUE
+    private const val CACHE_SWEEP_INTERVAL_TICKS = 1200L // drop entries for deleted ships ~once a minute
+
+    private fun roughWorldAABB(ship: Ship, level: Level, gameTime: Long): AABBdc {
+        val cache: ConcurrentHashMap<ShipId, RoughAABBEntry>
+        if (level.isClientSide) {
+            cache = roughAABBCacheClient
+            if (gameTime - lastCacheSweepClient >= CACHE_SWEEP_INTERVAL_TICKS) {
+                cache.clear()
+                lastCacheSweepClient = gameTime
+            }
+        } else {
+            cache = roughAABBCacheServer
+            if (gameTime - lastCacheSweepServer >= CACHE_SWEEP_INTERVAL_TICKS) {
+                cache.clear()
+                lastCacheSweepServer = gameTime
+            }
         }
+        val entry = cache.computeIfAbsent(ship.id) { RoughAABBEntry() }
+        if (entry.gameTime != gameTime) {
+            // shipAABB and worldAABB are sometimes too small when the ship was just loaded for the
+            // first time, so use activeChunksSet for a rougher box that always contains the ship.
+            getShipyardChunkAABBAround(ship).toAABBd(entry.aabb).transform(ship.shipToWorld)
+            entry.gameTime = gameTime
+        }
+        return entry.aabb
     }
 
     @JvmStatic
@@ -92,25 +128,34 @@ object EntityShipCollisionUtils {
                 return true
             }
 
+            val allShips = level.allShips
+            if (allShips.none()) {
+                return false
+            }
+
+            // Plain loop with early exit instead of a Stream pipeline: this runs at the HEAD of
+            // every Entity.move() call, so per-entity allocation and lambda overhead matter.
+            val gameTime = level.gameTime
             val aabb = entity.boundingBox.toJOML()
-            return getAllShipsIntersectingEvenIfNotYetFullyLoaded(level, aabb)
-                .allMatch { ship ->
-                    // Skip collision check for recently-spawned ships whose chunks are still
-                    // loading. Without this, spawning a new ship near a player would freeze
-                    // them because isCollidingWithUnloadedShips returns true (the new ship's
-                    // chunks haven't loaded yet), which cancels all entity movement.
-                    // This must be checked BEFORE vs_isKnownShip, because the player won't
-                    // know about a brand-new ship yet either.
-                    if (isInSpawnGracePeriod(ship.id)) {
-                        return@allMatch true // pretend it's loaded → don't block movement
-                    }
-                    if (entity is PlayerKnownShipsDuck && !entity.vs_isKnownShip(ship.id)) {
-                        return@allMatch false
-                    }
-                    val aabbInShip = AABBd(aabb).transform(ship.worldToShip)
-                    areAllChunksLoaded(ship, aabbInShip, level)
+            for (ship in allShips) {
+                if (ship.chunkClaimDimension != level.dimensionId) continue
+                if (!roughWorldAABB(ship, level, gameTime).intersectsAABB(aabb)) continue
+                // Skip collision check for recently-spawned ships whose chunks are still
+                // loading. Without this, spawning a new ship near a player would freeze
+                // them because isCollidingWithUnloadedShips returns true (the new ship's
+                // chunks haven't loaded yet), which cancels all entity movement.
+                // This must be checked BEFORE vs_isKnownShip, because the player won't
+                // know about a brand-new ship yet either.
+                if (isInSpawnGracePeriod(ship.id, gameTime)) continue // pretend it's loaded → don't block movement
+                if (entity is PlayerKnownShipsDuck && !entity.vs_isKnownShip(ship.id)) {
+                    return true
                 }
-                .not()
+                val aabbInShip = AABBd(aabb).transform(ship.worldToShip)
+                if (!areAllChunksLoaded(ship, aabbInShip, level)) {
+                    return true
+                }
+            }
+            return false
         }
 
         return false
@@ -133,6 +178,93 @@ object EntityShipCollisionUtils {
         }
 
         return true
+    }
+
+    // === Gravity-only hold through ship transitions ===
+    // A short, bounded "hold the entity's downward movement" window used while a ship's voxel collision isn't
+    // solid yet (login / assembly / disassembly). Login + assembly reuse the ship-id [recentlySpawnedShips]
+    // grace path (the ship still exists); DISASSEMBLY has no ship to key on, so it arms a world-space box here.
+    private class WorldFreezeEntry(val dimensionId: String, val aabb: AABBd, val deadlineGameTime: Long)
+    private val worldFreezes = ConcurrentLinkedQueue<WorldFreezeEntry>()
+
+    /** The ship's world-space bounding box (from its shipyard AABB transformed to world), for [markWorldFreeze]. */
+    @JvmStatic
+    fun worldAABBForShip(ship: Ship): AABBd {
+        val sb = ship.shipAABB
+        return if (sb != null) {
+            AABBd(
+                sb.minX().toDouble(), sb.minY().toDouble(), sb.minZ().toDouble(),
+                (sb.maxX() + 1).toDouble(), (sb.maxY() + 1).toDouble(), (sb.maxZ() + 1).toDouble()
+            ).transform(ship.shipToWorld)
+        } else {
+            val p = ship.transform.position
+            AABBd(p.x() - 32.0, p.y() - 32.0, p.z() - 32.0, p.x() + 32.0, p.y() + 32.0, p.z() + 32.0)
+        }
+    }
+
+    /**
+     * Arm a bounded gravity-hold over a WORLD-space box for [durationTicks] (used on ship DISASSEMBLY, where the
+     * ship no longer exists to key on). Tick-based against level.gameTime, matching the rest of this class (NOT
+     * System.nanoTime). The disassembly caller lives in the Eureka repo.
+     */
+    @JvmStatic
+    fun markWorldFreeze(level: Level, aabb: AABBd, durationTicks: Long) {
+        worldFreezes.add(WorldFreezeEntry(level.dimensionId, aabb, level.gameTime + durationTicks))
+    }
+
+    @JvmStatic
+    fun isInWorldFreeze(entity: Entity): Boolean {
+        if (worldFreezes.isEmpty()) return false
+        val now = entity.level().gameTime
+        val dim = entity.level().dimensionId
+        val px = entity.x
+        val py = entity.y
+        val pz = entity.z
+        var held = false
+        val it = worldFreezes.iterator()
+        while (it.hasNext()) {
+            val e = it.next()
+            if (now - e.deadlineGameTime > 0) {
+                it.remove()
+                continue
+            }
+            if (!held && e.dimensionId == dim &&
+                px >= e.aabb.minX() && px <= e.aabb.maxX() &&
+                py >= e.aabb.minY() && py <= e.aabb.maxY() &&
+                pz >= e.aabb.minZ() && pz <= e.aabb.maxZ()
+            ) {
+                held = true
+            }
+        }
+        return held
+    }
+
+    /**
+     * Whether [entity]'s GRAVITY (only) should be held this tick: it is in a ship-transition zone where the
+     * deck collision isn't solid yet -- a DISASSEMBLY world-freeze, OR over a freshly-loaded/assembled ship
+     * still in its spawn-grace (login / assembly). Used by MixinEntity.vs$holdGravityDuringShipTransition to
+     * clamp ONLY the downward movement, so the entity keeps full X/Z + camera control but cannot fall through.
+     * Deadline-bounded by both [worldFreezes] and [recentlySpawnedShips], so it never holds forever.
+     *
+     * MOBS / ENTITIES ONLY -- players are excluded (the downward-clamp made elytra/creative flight feel floaty,
+     * and they don't fall through on transitions anyway), keeping player flight + gravity completely vanilla.
+     */
+    @JvmStatic
+    fun shouldHoldGravity(entity: Entity): Boolean {
+        if (entity is Player) return false
+        if (isInWorldFreeze(entity)) return true
+        val level = entity.level()
+        if (!(level is ServerLevel || (level.isClientSide && level is ClientLevel))) return false
+        val allShips = level.allShips
+        if (allShips.none()) return false
+        val gameTime = level.gameTime
+        val aabb = entity.boundingBox.toJOML()
+        for (ship in allShips) {
+            if (ship.chunkClaimDimension != level.dimensionId) continue
+            if (!roughWorldAABB(ship, level, gameTime).intersectsAABB(aabb)) continue
+            if (isInSpawnGracePeriod(ship.id, gameTime)) return true
+        }
+        return false
     }
 
     /**

@@ -116,7 +116,7 @@ object TestHingeBlock :
         )
         // Mark as recently spawned so players aren't frozen while chunks load
         org.valkyrienskies.mod.common.util.EntityShipCollisionUtils.markShipAsRecentlySpawned(
-            ship.id, level.server.tickCount.toLong()
+            ship.id, level.gameTime
         )
         val shipCenterPos = BlockPos(
             (ship.transform.positionInShip.x() - 0.5).roundToInt(),

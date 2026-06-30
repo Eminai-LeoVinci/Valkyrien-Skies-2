@@ -18,7 +18,22 @@ data class ShipSettings(
     /**
      * If true this ship will change dimensions when it touches a portal
      */
-    var changeDimensionOnTouchPortals: Boolean = true
+    var changeDimensionOnTouchPortals: Boolean = true,
+
+    /**
+     * If true, VS2 keeps this ship's world-position chunks force-ticked every server tick, so the
+     * ship keeps simulating (physics, cruise/autopilot, machinery) even when no player is nearby —
+     * independent of the vanilla "Simulation Distance" video setting.
+     *
+     * Background: a VS2 ship only physics-ticks while its WORLD position sits in a ticking chunk
+     * (i.e. within a player's vanilla simulation distance). When this flag is set,
+     * [org.valkyrienskies.mod.common.world.ShipActivationManager] follows the ship and force-ticks
+     * the chunks under it so simulation never pauses. Costs CPU only for flagged ships.
+     *
+     * Persisted per ship (part of the ShipSettings attachment). Toggle in-game from the ship helm's
+     * "Keep Active" checkbox, or with `/vs set-keep-active <ships> <true|false>`.
+     */
+    var keepActive: Boolean = false
 )
 
 @OptIn(VsBeta::class)

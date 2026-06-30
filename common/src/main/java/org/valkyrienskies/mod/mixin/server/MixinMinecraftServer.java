@@ -50,6 +50,8 @@ import org.valkyrienskies.mod.common.util.EntityDragger;
 import org.valkyrienskies.mod.common.util.VSLevelChunk;
 import org.valkyrienskies.mod.common.util.VSServerLevel;
 import org.valkyrienskies.mod.common.world.ChunkManagement;
+import org.valkyrienskies.mod.common.world.ShipActivationManager;
+import org.valkyrienskies.mod.common.world.ShipPlantMower;
 import org.valkyrienskies.mod.compat.LoadedMods;
 import org.valkyrienskies.mod.compat.Weather2Compat;
 import org.valkyrienskies.mod.util.KrunchSupport;
@@ -165,6 +167,13 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     private void preTick(final CallbackInfo ci) {
         final Set<VsiPlayer> vsPlayers = playerList.getPlayers().stream()
             .map(VSGameUtilsKt::getPlayerWrapper).collect(Collectors.toSet());
+        // Pin a synthetic observer (at the ship centre, distance 0) onto every "active" ship --
+        // keepActive, piloted, or one a player is aboard -- so vs-core's player-proximity load/physics
+        // gate keeps it simulating even with no real player nearby (keepActive) or when the only player
+        // stands at the far end of a big craft. vs-core gates physics on its player set + proximity,
+        // NOT on vanilla sim distance or chunk tickets, so making it think a player sits on the ship is
+        // the only lever. The observer feeds only that gate; nothing is networked to it.
+        vsPlayers.addAll(ShipActivationManager.activeShipObservers(shipWorld, MinecraftServer.class.cast(this)));
         shipWorld.setPlayers(vsPlayers);
 
         // region Tell the VS world to load new levels, and unload deleted ones
@@ -208,6 +217,11 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     )
     private void preConnectionTick(final CallbackInfo ci) {
         ChunkManagement.tickChunkLoading(shipWorld, MinecraftServer.class.cast(this));
+        // Keep "active" ships (keepActive flag / piloted / occupied) simulating regardless of the vanilla
+        // simulation-distance setting by force-ticking the world chunks under them.
+        ShipActivationManager.tick(shipWorld, MinecraftServer.class.cast(this));
+        // Moving ships silently cut away the kelp their hull physically touches (no drops, no felling).
+        ShipPlantMower.tick(shipWorld, MinecraftServer.class.cast(this));
     }
 
     @Shadow
@@ -219,9 +233,13 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
     )
     private void postTick(final CallbackInfo ci) {
         vsPipeline.postTickGame();
-        // Only drag entities after we have updated the ship positions
+        // Only drag entities after we have updated the ship positions. The drag sweep visits every
+        // entity in every dimension, so skip it entirely when the world has no ships.
+        final boolean anyShips = shipWorld != null && shipWorld.getAllShips().size() > 0;
         for (final ServerLevel level : getAllLevels()) {
-            EntityDragger.INSTANCE.dragEntitiesWithShips(level.getAllEntities(), false);
+            if (anyShips) {
+                EntityDragger.INSTANCE.dragEntitiesWithShips(level.getAllEntities(), false);
+            }
             if (LoadedMods.getWeather2())
                 Weather2Compat.INSTANCE.tick(level);
         }
@@ -376,6 +394,9 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         // commit 076dd115afcf920a9db472527d8a41786b465863; MixinChunkMapClose is the
         // defense-in-depth safety net that assumes this ran.
         if (shipWorld != null) {
+            // Release any world-chunk / active-voxel tickets we placed for kept-active ships, before
+            // MC's shutdown chunk-drain loop runs (mirror of the SHIP_CHUNK cleanup below).
+            ShipActivationManager.clearAll(MinecraftServer.class.cast(this));
             for (final LoadedServerShip ship : shipWorld.getLoadedShips()) {
                 final ServerLevel level = dimensionToLevelMap.get(ship.getChunkClaimDimension());
                 if (level != null) {

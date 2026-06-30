@@ -137,7 +137,10 @@ public abstract class MixinMinecraft
             }
             shipObjectWorld.tickNetworking(networkingAddress);
             shipObjectWorld.postTick();
-            EntityDragger.INSTANCE.dragEntitiesWithShips(level.entitiesForRendering(), false);
+            // The drag sweep visits every rendered entity; skip it when there are no ships.
+            if (shipObjectWorld.getAllShips().size() > 0) {
+                EntityDragger.INSTANCE.dragEntitiesWithShips(level.entitiesForRendering(), false);
+            }
         }
     }
 

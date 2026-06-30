@@ -3,6 +3,7 @@ package org.valkyrienskies.mod.mixin.feature.shipyard_entities;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.TraceableEntity;
+import net.minecraft.world.entity.projectile.FireworkRocketEntity;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
@@ -39,6 +40,16 @@ public abstract class MixinProjectile extends Entity implements TraceableEntity 
         at = @At("HEAD")
     )
     private void sendToShipyard(BlockHitResult blockHitResult, CallbackInfo ci) {
+        // Fireworks are short-lived cosmetic projectiles, not the kind we want stuck-on-ship. A plain
+        // (no-charge) elytra-boost rocket does NOT explode/discard on block contact -- vanilla onHitBlock
+        // only removes it when hasExplosion() is true -- so relocating it into the shipyard (whose chunks
+        // are BLOCK_TICKING only, never ENTITY_TICKING) strands it forever: it stops ticking, never reaches
+        // its lifetime, and returnFromShipyard (a tick-time check) can never run again. The rocket then
+        // renders frozen on the deck and only a disassembly clears it. Keep fireworks in world space; there
+        // they keep ticking and age out / explode normally.
+        if ((Object) this instanceof FireworkRocketEntity) {
+            return;
+        }
         Ship ship;
         if ((ship = VSGameUtilsKt.getShipManagingPos(level(), blockHitResult.getBlockPos())) != null) {
             Vector3d hitLocation = ship.getWorldToShip().transformPosition(VectorConversionsMCKt.toJOML(blockHitResult.location));

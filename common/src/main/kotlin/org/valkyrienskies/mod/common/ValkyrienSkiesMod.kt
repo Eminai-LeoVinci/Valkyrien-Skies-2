@@ -42,9 +42,11 @@ import org.valkyrienskies.mod.common.jackson.BlockPosSerializer
 import org.valkyrienskies.mod.common.networking.VSGamePackets
 import org.valkyrienskies.mod.common.util.BuoyancyHandlerAttachment
 import org.valkyrienskies.mod.common.util.GameToPhysicsAdapter
+import org.valkyrienskies.mod.common.util.OceanWaveField
 import org.valkyrienskies.mod.common.util.ShipSettings
 import org.valkyrienskies.mod.common.util.SplitHandler
 import org.valkyrienskies.mod.common.util.SplittingDisablerAttachment
+import org.valkyrienskies.mod.common.util.WaveBuoyancyAttachment
 import org.valkyrienskies.mod.mixinducks.client.world.ClientChunkCacheDuck
 import org.valkyrienskies.mod.mixinducks.feature.tickets.PlayerKnownShipsDuck
 import java.util.ServiceLoader
@@ -132,6 +134,15 @@ object ValkyrienSkiesMod {
         VSCoreConfig.SERVER.shipLoadDistance = 4096.0
         VSCoreConfig.SERVER.shipUnloadDistance = 4480.0
 
+        // Disable the post-load "settling" freeze. vs-core defaults shipLoadFreezeSeconds to 5s and
+        // ShipObjectServerWorld RE-ARMS it on every voxel/terrain update a ship receives, so an
+        // autopilot/keepActive ship streaming new terrain under itself keeps the freeze permanently
+        // armed and vs-core clamps it to its kinematic target — the ship stops moving mid-flight until
+        // a real player reloads the chunks around it. Setting 0 here (before VSConfigUpdater builds the
+        // config spec) makes 0.0 the spec default so the generated TOML can't clobber it back to 5s;
+        // ShipActivationManager also re-asserts 0 each tick as a live-read backstop. 0 = disabled.
+        VSCoreConfig.SERVER.physics.shipLoadFreezeSeconds = 0.0
+
         BlockStateInfo.init()
         VSGamePackets.register()
         VSGamePackets.registerHandlers()
@@ -156,13 +167,22 @@ object ValkyrienSkiesMod {
             useLegacySerializer()
         }
         core.registerAttachment(BuoyancyHandlerAttachment::class.java)
+        core.registerAttachment(WaveBuoyancyAttachment::class.java)
 
         core.shipLoadEvent.on { event ->
             event.ship.setAttachment(SplittingDisablerAttachment(true))
             event.ship.setAttachment(BuoyancyHandlerAttachment())
+            event.ship.setAttachment(
+                WaveBuoyancyAttachment().also {
+                    it.ship = event.ship as? org.valkyrienskies.core.api.ships.LoadedServerShip
+                }
+            )
         }
 
         core.physTickEvent.on { event ->
+            // this event fires once per physics dimension; advanceTime gates on a driver
+            // dimension internally so the wave clock advances once per frame, not once per dim
+            OceanWaveField.advanceTime(event.world.dimension, event.delta.toDouble())
             dimensionalGTPAs.forEach { dimensionId, gameTickForceApplier ->
                 if (event.world.dimension == dimensionId) {
                     gameTickForceApplier.physTick(event.world, event.delta)

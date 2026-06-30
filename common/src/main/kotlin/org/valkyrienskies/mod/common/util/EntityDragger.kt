@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerPlayer
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.LivingEntity
+import net.minecraft.world.entity.decoration.ArmorStand
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.level.Level
@@ -15,12 +16,15 @@ import org.joml.Vector3d
 import org.joml.Vector3dc
 import org.valkyrienskies.core.api.ships.ClientShip
 import org.valkyrienskies.core.api.ships.Ship
+import org.valkyrienskies.core.api.ships.properties.ShipTransform
 import org.valkyrienskies.mod.api.toJOML
 import org.valkyrienskies.mod.api.toMinecraft
+import org.valkyrienskies.mod.common.config.VSClientConfig
 import org.valkyrienskies.mod.common.entity.handling.VSEntityManager
 import org.valkyrienskies.mod.common.getLoadedShipManagingPos
 import org.valkyrienskies.mod.common.shipObjectWorld
 import org.valkyrienskies.mod.common.util.EntityLerper.yawToWorld
+import kotlin.math.abs
 import kotlin.math.asin
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -30,6 +34,12 @@ import kotlin.math.sqrt
 object EntityDragger {
     // How much we decay the addedMovement each tick after player hasn't collided with a ship for at least 10 ticks.
     private const val ADDED_MOVEMENT_DECAY = 0.9
+
+    // Horizontal slack (ship-space blocks) added to the grounded on-hull test so a player whose bounding box
+    // overhangs a deck edge -- or who stands on a thin/edge block that onPos can't resolve -- still reads as
+    // "on the hull" instead of being false-released. Stacks on top of the per-face influenceExtend config; it
+    // is purely the always-on bounding-box-overhang allowance so the edge stays sticky even at config 0.
+    private const val HULL_EDGE_MARGIN = 0.5
 
 
     /**
@@ -54,19 +64,77 @@ object EntityDragger {
             //     branch from firing at all (no leftover buffered movement to push the
             //     player along after they leave the ship's region).
             val isGliding = (entity as? LivingEntity)?.isFallFlying == true
-            val carriedShipId = entityDraggingInformation.lastShipStoodOn
-            if (isGliding && carriedShipId != null) {
+            // Airborne carry: a player who jumps/walks off a moving ship (free-fall), OR who is creative-flying, keeps
+            // being carried within the ship's footprint just like an elytra glider, instead of dropping out after the
+            // 25-tick (~2s) stood-on-ship timer expires. All three reuse the identical border-bounded pin/release path
+            // below; only the entry gate differs. The position-drag is a frame-re-anchoring teleport that never writes
+            // deltaMovement, so it COMPOSES with active flight/glide input rather than fighting it.
+            val isFreefallingPlayer = entity is Player && !entity.onGround() && !entity.abilities.flying
+            // Creative/spectator flight: carried while actively flying inside the border (the player took off from the
+            // deck, so lastShipStoodOn is still stamped). Mirrors the proven glider path verbatim.
+            val isFlyingPlayer = entity is Player && entity.abilities.flying
+            var carriedShipId = entityDraggingInformation.lastShipStoodOn
+
+            // Cancel-on-contact + grounded keep-alive, via the RAW hull footprint (robust where onPos is NOT). The
+            // support-block probe behind entity.onPos mis-resolves on thin/edge blocks - half-slabs, stairs, fences,
+            // shelves, ship edges - landing in the empty part of the cell, so it reads "non-ship" even while the player
+            // stands ON the ship (and acquisition likewise stops re-stamping -> the old slow drop). So instead transform
+            // the player into ship-space and test the RAW hull AABB.
+            if (carriedShipId != null && entity is Player) {
+                val hullShip = entity.level().shipObjectWorld.allShips.getById(carriedShipId)
+                val hullAABB = hullShip?.shipAABB
+                val onCarriedHull = if (hullShip != null && hullAABB != null) {
+                    // Tests the player's CURRENT position (after their own movement this tick, before the carry).
+                    val wp = entity.position()
+                    // FRAME-CONSISTENCY -- this is what actually fixes the speed-dependent stern drop. The player's
+                    // pre-carry world position is anchored to the ship's PREVIOUS-tick transform; recover their
+                    // ship-local standing spot with that SAME transform so the ship's own per-tick motion cancels out
+                    // of the measurement (using the CURRENT worldToShip would slide the apparent position backward by
+                    // one tick of ship travel and false-release stern-standers on a fast ship).
+                    val lp = hullShip.prevTickTransform.worldToShip.transformPosition(wp.x, wp.y, wp.z, Vector3d())
+                    // Small always-on horizontal slack (HULL_EDGE_MARGIN) so a bounding box that legitimately
+                    // overhangs the deck rim still reads as on-hull. Deliberately NOT widened by influenceExtend.
+                    lp.x >= hullAABB.minX() - HULL_EDGE_MARGIN && lp.x <= hullAABB.maxX() + 1.0 + HULL_EDGE_MARGIN &&
+                        lp.z >= hullAABB.minZ() - HULL_EDGE_MARGIN && lp.z <= hullAABB.maxZ() + 1.0 + HULL_EDGE_MARGIN &&
+                        lp.y >= hullAABB.minY() - 1.0 && lp.y <= hullAABB.maxY() + 2.0
+                } else {
+                    false
+                }
+                if (!onCarriedHull && (entity.onGround() || entity.isInWater())) {
+                    // Grounded or in water OFF the hull = on shore / in world water -> release instantly. (Airborne
+                    // players off the hull but still inside the inflated border are NOT released here; the gate below
+                    // carries them.) Null the local carriedShipId too so that gate can't re-pin a stale id this tick.
+                    entityDraggingInformation.lastShipStoodOn = null
+                    entityDraggingInformation.addedMovementLastTick = Vector3d()
+                    entityDraggingInformation.addedYawRotLastTick = 0.0
+                    carriedShipId = null
+                } else if (entity.onGround() && onCarriedHull) {
+                    // Standing on the hull (incl. thin/edge blocks where onPos mis-probes) -> keep the carry alive by
+                    // pinning the stood-on-ship timer, so the 25-tick expiry can never drop a player who is truly aboard.
+                    entityDraggingInformation.ticksSinceStoodOnShip = 0
+                }
+            }
+
+            if ((isGliding || isFreefallingPlayer || isFlyingPlayer) && carriedShipId != null) {
                 val carriedShip = entity.level().shipObjectWorld.allShips.getById(carriedShipId)
                 val shipAABB = carriedShip?.shipAABB
                 val insideAABB = if (carriedShip != null && shipAABB != null) {
+                    val worldPos = entity.position()
                     val shipLocalPos = carriedShip.worldToShip.transformPosition(
-                        entity.x, entity.y, entity.z, Vector3d()
+                        worldPos.x, worldPos.y, worldPos.z, Vector3d()
                     )
-                    shipAABB.containsPoint(
-                        shipLocalPos.x.toFloat(),
-                        shipLocalPos.y.toFloat(),
-                        shipLocalPos.z.toFloat()
-                    )
+                    // Influence border = the ship AABB inflated outward per-FACE by the configured ship-space blocks
+                    // on each of the six faces. Ship-space axis -> face: -X = Left, +X = Right; -Y = Bottom, +Y = Top;
+                    // -Z = Back, +Z = Front. 0 on a face = the raw ship AABB on that face (boundary-inclusive).
+                    val extLeft = VSClientConfig.CLIENT.influenceExtendLeft
+                    val extRight = VSClientConfig.CLIENT.influenceExtendRight
+                    val extBottom = VSClientConfig.CLIENT.influenceExtendBottom
+                    val extTop = VSClientConfig.CLIENT.influenceExtendTop
+                    val extBack = VSClientConfig.CLIENT.influenceExtendBack
+                    val extFront = VSClientConfig.CLIENT.influenceExtendFront
+                    shipLocalPos.x >= shipAABB.minX() - extLeft && shipLocalPos.x <= shipAABB.maxX() + extRight &&
+                        shipLocalPos.y >= shipAABB.minY() - extBottom && shipLocalPos.y <= shipAABB.maxY() + extTop &&
+                        shipLocalPos.z >= shipAABB.minZ() - extBack && shipLocalPos.z <= shipAABB.maxZ() + extFront
                 } else {
                     false
                 }
@@ -74,7 +142,7 @@ object EntityDragger {
                     // Pin counter at 0: bypass expiry, keep Mech 1 active.
                     entityDraggingInformation.ticksSinceStoodOnShip = 0
                 } else {
-                    // Glider exited AABB - release carry immediately.
+                    // Left the influence border - release carry immediately.
                     entityDraggingInformation.lastShipStoodOn = null
                     entityDraggingInformation.addedMovementLastTick = Vector3d()
                     entityDraggingInformation.addedYawRotLastTick = 0.0
@@ -113,37 +181,75 @@ object EntityDragger {
                         // endregion
 
                         // region Compute look dragging
-                        val yViewRot = entity.yRot.toDouble()
+                        // world yRot(deg) <-> ship-relative yaw(rad) in the carry's look-vector convention.
+                        fun relYawFromWorld(worldYawDeg: Double, t: ShipTransform): Double {
+                            val lw = Vector3d(sin(-Math.toRadians(worldYawDeg)), 0.0, cos(-Math.toRadians(worldYawDeg)))
+                            val ls = t.worldToShip.transformDirection(lw, Vector3d())
+                            return -atan2(ls.x(), ls.z())
+                        }
+                        fun worldYawFromRel(relYaw: Double, t: ShipTransform): Double {
+                            val ls = Vector3d(sin(-relYaw), 0.0, cos(-relYaw))
+                            val lw = t.shipToWorld.transformDirection(ls, Vector3d())
+                            return -Math.toDegrees(atan2(lw.x(), lw.z()))
+                        }
 
-                        // Get the y-look vector of the entity only using y-rotation, ignore x-rotation
-                        val entityLookYawOnly =
-                            Vector3d(sin(-Math.toRadians(yViewRot)), 0.0, cos(-Math.toRadians(yViewRot)))
+                        if (entity is ArmorStand) {
+                            // ABSOLUTE wobble-immune yaw deck-lock. The incremental look reconstruction
+                            // (else-branch) feeds a parked ship's pitch/roll idle-wobble into the yaw and drifts;
+                            // a static-yaw armor stand is the SOLE writer of its client yaw (EntityLerper yaw-lerp
+                            // is skipped, server yaw never applied), so that per-tick variation IS the visible
+                            // jitter. Lock the stand's ship-relative facing once, then each tick SET the world yaw
+                            // from it via the CURRENT transform: parked ship -> CONSTANT yaw at ANY heading; a real
+                            // turn tracks the ship exactly. Scoped to ArmorStand so mobs/players keep their 3D look.
+                            val info = entityDraggingInformation
+                            val stored = info.draggedArmorStandRelYaw
+                            // re-aim detect: the stand's yRot diverged from what we SET last tick (== reconstruct
+                            // with the prev transform) -> a player/command rotated it -> re-lock.
+                            var reAimDiff = if (stored != null)
+                                entity.yRot.toDouble() - worldYawFromRel(stored, shipData.prevTickTransform) else 0.0
+                            while (reAimDiff <= -180.0) reAimDiff += 360.0
+                            while (reAimDiff > 180.0) reAimDiff -= 360.0
+                            if (stored == null || info.changedShipLastTick || abs(reAimDiff) > 1.0) {
+                                info.draggedArmorStandRelYaw = relYawFromWorld(entity.yRot.toDouble(), referenceTransform)
+                            }
+                            val targetWorldYaw = worldYawFromRel(info.draggedArmorStandRelYaw!!, referenceTransform)
+                            var delta = targetWorldYaw - entity.yRot.toDouble()
+                            while (delta <= -180.0) delta += 360.0
+                            while (delta > 180.0) delta -= 360.0
+                            addedYRot = delta
+                        } else {
+                            val yViewRot = entity.yRot.toDouble()
 
-                        val newLookIdeal = referenceTransform.shipToWorld.transformDirection(
-                            shipData.prevTickTransform.worldToShip.transformDirection(
-                                entityLookYawOnly
+                            // Get the y-look vector of the entity only using y-rotation, ignore x-rotation
+                            val entityLookYawOnly =
+                                Vector3d(sin(-Math.toRadians(yViewRot)), 0.0, cos(-Math.toRadians(yViewRot)))
+
+                            val newLookIdeal = referenceTransform.shipToWorld.transformDirection(
+                                shipData.prevTickTransform.worldToShip.transformDirection(
+                                    entityLookYawOnly
+                                )
                             )
-                        )
 
-                        // Get the X and Y rotation from [newLookIdeal]
-                        val newXRot = asin(-newLookIdeal.y())
-                        val xRotCos = cos(newXRot)
-                        val newYRot = -atan2(newLookIdeal.x() / xRotCos, newLookIdeal.z() / xRotCos)
+                            // Get the X and Y rotation from [newLookIdeal]
+                            val newXRot = asin(-newLookIdeal.y())
+                            val xRotCos = cos(newXRot)
+                            val newYRot = -atan2(newLookIdeal.x() / xRotCos, newLookIdeal.z() / xRotCos)
 
-                        // The Y rotation of the entity before dragging
-                        var entityYRotCorrected = entity.yRot % 360.0
-                        // Limit [entityYRotCorrected] to be between -180 to 180 degrees
-                        if (entityYRotCorrected <= -180.0) entityYRotCorrected += 360.0
-                        if (entityYRotCorrected >= 180.0) entityYRotCorrected -= 360.0
+                            // The Y rotation of the entity before dragging
+                            var entityYRotCorrected = entity.yRot % 360.0
+                            // Limit [entityYRotCorrected] to be between -180 to 180 degrees
+                            if (entityYRotCorrected <= -180.0) entityYRotCorrected += 360.0
+                            if (entityYRotCorrected >= 180.0) entityYRotCorrected -= 360.0
 
-                        // The Y rotation of the entity after dragging
-                        val newYRotAsDegrees = Math.toDegrees(newYRot)
-                        // Limit [addedYRotFromDragging] to be between -180 to 180 degrees
-                        var addedYRotFromDragging = newYRotAsDegrees - entityYRotCorrected
-                        if (addedYRotFromDragging <= -180.0) addedYRotFromDragging += 360.0
-                        if (addedYRotFromDragging >= 180.0) addedYRotFromDragging -= 360.0
+                            // The Y rotation of the entity after dragging
+                            val newYRotAsDegrees = Math.toDegrees(newYRot)
+                            // Limit [addedYRotFromDragging] to be between -180 to 180 degrees
+                            var addedYRotFromDragging = newYRotAsDegrees - entityYRotCorrected
+                            if (addedYRotFromDragging <= -180.0) addedYRotFromDragging += 360.0
+                            if (addedYRotFromDragging >= 180.0) addedYRotFromDragging -= 360.0
 
-                        addedYRot = addedYRotFromDragging
+                            addedYRot = addedYRotFromDragging
+                        }
                         // endregion
                     }
                 } else {
@@ -202,9 +308,21 @@ object EntityDragger {
                         }
                     }
 
+                    // An armor stand has a STATIC, deck-locked yaw (the ArmorStand branch above holds it
+                    // constant) -- it has no legitimate per-tick yaw interpolation. But while the carry runs VS
+                    // suppresses the vanilla yRotO<-yRot sync, and the carry writes only the CURRENT yaw, never its
+                    // previous-tick partner. On a freshly-spawned stand yRotO/yHeadRotO/yBodyRotO default to 0, so
+                    // the renderer draws rotLerp(partialTick, 0, yRot) every carry-ON frame -- a 0deg<->yRot spin.
+                    // Snap the previous-tick partners to the freshly-set values so there is nothing left to lerp.
+                    if (entity is ArmorStand) {
+                        entity.yRotO = entity.yRot
+                        entity.yHeadRotO = entity.yHeadRot
+                        entity.yBodyRotO = entity.yBodyRot
+                    }
+
                     entityDraggingInformation.addedYawRotLastTick = addedYRot
                 }
-            } else if ((!entity.level().isClientSide || entity is LocalPlayer) && entityDraggingInformation.addedMovementLastTick.length() > 1e-3) {
+            } else if ((!entity.level().isClientSide || entity is LocalPlayer) && entityDraggingInformation.addedMovementLastTick.lengthSquared() > 1e-6) {
                 entity.push(entityDraggingInformation.addedMovementLastTick.x(),
                     entityDraggingInformation.addedMovementLastTick.y(),
                     entityDraggingInformation.addedMovementLastTick.z())

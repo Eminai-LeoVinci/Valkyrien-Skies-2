@@ -2,6 +2,7 @@ package org.valkyrienskies.mod.common.util
 
 import net.minecraft.util.Mth
 import net.minecraft.world.entity.Entity
+import net.minecraft.world.entity.decoration.ArmorStand
 import org.joml.Vector3d
 import org.joml.Vector3dc
 import org.valkyrienskies.core.api.ships.ClientShip
@@ -88,11 +89,17 @@ object EntityLerper {
             dragInfo.relativePositionOnShip = Vector3d(newX, newY, newZ)
             entity.setPos(newPos.x(), newPos.y(), newPos.z())
 
-            val g = Mth.wrapDegrees(lerpYawWorld - currentYawWorld)
-            val newYaw = (currentYawWorld + g / dragInfo.lerpSteps).toFloat()
+            // Armor stands: skip the YAW lerp (the position lerp above is kept). The EntityDragger carry
+            // ALONE then deck-locks the stand's yaw to the ship -- it rotates WITH the deck and is still
+            // when parked (carry delta = 0). Running the lerp TOO made writer A fight the carry + the
+            // periodic server re-sync, jittering the static-yaw body model.
+            if (entity !is ArmorStand) {
+                val g = Mth.wrapDegrees(lerpYawWorld - currentYawWorld)
+                val newYaw = (currentYawWorld + g / dragInfo.lerpSteps).toFloat()
 
-            entity.yRot = newYaw
-            dragInfo.relativeYawOnShip = yawToShip(ship, newYaw.toDouble())
+                entity.yRot = newYaw
+                dragInfo.relativeYawOnShip = yawToShip(ship, newYaw.toDouble())
+            }
 
             dragInfo.lerpSteps -= 1
         }
@@ -102,6 +109,11 @@ object EntityLerper {
      * Additional function to lerp head separately, as it's a separate packet.
      */
     fun lerpHeadStep(dragInfo: EntityDraggingInformation, refship: Ship, entity: Entity) {
+        // Armor stands: skip the head-yaw lerp; the EntityDragger carry deck-locks the head with the
+        // body (running the lerp too would fight it).
+        if (entity is ArmorStand) {
+            return
+        }
         if (refship !is ClientShip) {
             return
         }
