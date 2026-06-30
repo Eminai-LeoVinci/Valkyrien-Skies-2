@@ -4,30 +4,25 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ImposterProtoChunk;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainerFactory;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.chunk.storage.RegionStorageInfo;
+import net.minecraft.world.level.chunk.storage.SerializableChunkData;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.Heightmap.Types;
-import net.minecraft.world.level.material.Fluid;
-import net.minecraft.world.ticks.LevelChunkTicks;
 import org.jetbrains.annotations.NotNull;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -45,13 +40,6 @@ public abstract class MixinLevelChunk extends ChunkAccess implements VSLevelChun
     @Shadow
     @Final
     Level level;
-
-    @Shadow
-    @Mutable
-    private LevelChunkTicks<Block> blockTicks;
-    @Shadow
-    @Mutable
-    private LevelChunkTicks<Fluid> fluidTicks;
 
     @Unique
     private static final Set<Types> ALL_HEIGHT_MAP_TYPES = new HashSet<>(Arrays.asList((Heightmap.Types.values())));
@@ -116,24 +104,97 @@ public abstract class MixinLevelChunk extends ChunkAccess implements VSLevelChun
     public abstract void unregisterTickContainerFromLevel(ServerLevel serverLevel);
 
     /**
-     * 1.21.11: relied on the (Registry&lt;Biome&gt;) LevelChunkSection ctor plus direct heightmaps/
-     * unsaved field access, all changed. Only used by cross-dimension ship transfer, which is
-     * out of scope for the initial 1.21.11 port (helm + assembly); stubbed until ported.
+     * Clears this chunk to empty terrain. Used by cross-dimension ship transfer to wipe the SOURCE chunk
+     * once its blocks have been copied into the destination dimension.
+     *
+     * <p>1.21.11 port: the old {@code new LevelChunkSection(Registry<Biome>)} ctor and the public
+     * {@code unsaved} field are gone -- empty sections now come from the level's {@link
+     * PalettedContainerFactory} ({@link Level#palettedContainerFactory()}) and the dirty flag is set via
+     * {@link #markUnsaved()}.
      */
     @Override
     public void clearChunk() {
-        throw new UnsupportedOperationException(
-            "clearChunk is not yet ported to 1.21.11 (cross-dimension ship transfer)");
+        final ServerLevel serverLevel = (ServerLevel) level;
+        final PalettedContainerFactory pcf = level.palettedContainerFactory();
+
+        clearAllBlockEntities();
+        unregisterTickContainerFromLevel(serverLevel);
+
+        heightmaps.clear();
+        Arrays.fill(sections, null);
+        for (int i = 0; i < sections.length; i++) {
+            sections[i] = new LevelChunkSection(pcf);
+        }
+        this.setLightCorrect(false);
+
+        registerTickContainerInLevel(serverLevel);
+        markUnsaved();
     }
 
     /**
-     * 1.21.11: this relied on ChunkSerializer.write/read, which were replaced by the
-     * SerializableChunkData API. Cross-dimension ship transfer is out of scope for the
-     * initial 1.21.11 port (helm + assembly); stubbed until SerializableChunkData is wired up.
+     * Copies another dimension's chunk into this one (cross-dimension ship transfer -- e.g. sailing a ship
+     * through a Nether portal).
+     *
+     * <p>1.21.11 port: the old {@code ChunkSerializer.write/read} path is replaced by {@link
+     * SerializableChunkData}. {@code copyOf().write()} snapshots the source chunk to NBT and {@code
+     * parse().read()} rebuilds a STANDALONE chunk in this dimension -- the NBT round-trip is what makes
+     * this a true deep copy, so the two dimensions never share section / block-entity objects. A FULL
+     * source chunk deserializes as an {@link ImposterProtoChunk} wrapping a real {@link LevelChunk}; we
+     * unwrap it and transplant its sections + block entities into this chunk, then re-prime heightmaps.
+     *
+     * <p>Pending scheduled block/fluid ticks and post-processing are intentionally NOT carried across: they
+     * are transient sub-tick state that re-settles on the next interaction, so the destination keeps its own
+     * (empty) tick lists rather than transplanting the source's.
      */
     @Override
     public void copyChunkFromOtherDimension(@NotNull final VSLevelChunk srcChunkVS) {
-        throw new UnsupportedOperationException(
-            "copyChunkFromOtherDimension is not yet ported to 1.21.11 (SerializableChunkData)");
+        final ServerLevel destLevel = (ServerLevel) level;
+        final PalettedContainerFactory pcf = level.palettedContainerFactory();
+
+        clearAllBlockEntities();
+        unregisterTickContainerFromLevel(destLevel);
+        heightmaps.clear();
+        Arrays.fill(sections, null);
+
+        final LevelChunk srcChunk = (LevelChunk) srcChunkVS;
+        final CompoundTag chunkNbt = SerializableChunkData
+            .copyOf((ServerLevel) srcChunk.getLevel(), srcChunk)
+            .write();
+        // RegionStorageInfo is only used by read() for error labelling (we feed the NBT directly, not a
+        // region file on disk), so a descriptive label is sufficient.
+        final RegionStorageInfo storageInfo =
+            new RegionStorageInfo(destLevel.dimension().toString(), destLevel.dimension(), "chunk");
+        final ProtoChunk loaded = SerializableChunkData
+            .parse(destLevel, pcf, chunkNbt)
+            .read(destLevel, destLevel.getPoiManager(), storageInfo, chunkPos);
+
+        // A full chunk reads back as an ImposterProtoChunk wrapping a standalone LevelChunk; unwrap it.
+        final ChunkAccess loadedChunk =
+            loaded instanceof ImposterProtoChunk imposter ? imposter.getWrapped() : loaded;
+
+        final LevelChunkSection[] loadedSections = loadedChunk.getSections();
+        for (int i = 0; i < sections.length; i++) {
+            sections[i] = i < loadedSections.length && loadedSections[i] != null
+                ? loadedSections[i] : new LevelChunkSection(pcf);
+        }
+        this.blendingData = loadedChunk.getBlendingData();
+
+        // Re-home block entities into this chunk.
+        if (loadedChunk instanceof LevelChunk loadedLevelChunk) {
+            for (final BlockEntity blockEntity : loadedLevelChunk.getBlockEntities().values()) {
+                this.setBlockEntity(blockEntity);
+            }
+        } else if (loaded instanceof ProtoChunk loadedProto) {
+            for (final BlockEntity blockEntity : loadedProto.getBlockEntities().values()) {
+                this.setBlockEntity(blockEntity);
+            }
+            this.pendingBlockEntities.putAll(loadedProto.getBlockEntityNbts());
+        }
+
+        // Recompute heightmaps (avoids crashes from missing maps), reset lighting, re-register ticks.
+        Heightmap.primeHeightmaps(this, ALL_HEIGHT_MAP_TYPES);
+        this.setLightCorrect(false);
+        registerTickContainerInLevel(destLevel);
+        markUnsaved();
     }
 }

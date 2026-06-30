@@ -313,6 +313,10 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         return dimensionToLevelMap.get(dimensionId);
     }
 
+    @Unique
+    private static final org.slf4j.Logger VS$CROSSDIM_LOGGER =
+        org.slf4j.LoggerFactory.getLogger("ValkyrienSkies-CrossDimTransfer");
+
     @Override
     public void moveTerrainAcrossDimensions(
         @NotNull final IShipActiveChunksSet shipChunks,
@@ -322,25 +326,40 @@ public abstract class MixinMinecraftServer implements IShipObjectWorldServerProv
         final ServerLevel srcLevel = getLevelFromDimensionId(srcDimension);
         final ServerLevel destLevel = getLevelFromDimensionId(destDimension);
 
-        // Copy ship chunks from srcLevel to destLevel
-        shipChunks.forEach((final int x, final int z) -> {
-            final LevelChunk srcChunk = srcLevel.getChunk(x, z);
+        // Cross-dimension transfer was a hard UnsupportedOperationException stub until the 1.21.11 chunk
+        // re-port (SerializableChunkData). This SERVER-side terrain move works, but cross-dimension SHIP
+        // transfer is blocked one layer down in vs-core: teleporting a ship into a dimension the client
+        // already tracks makes core's client ship-sync throw "Received ship create packet for already loaded
+        // ship" (ShipObjectClientWorld -> obfuscated coroutine internals), crashing the render thread. So
+        // there is intentionally NO in-game trigger wired to this hook until that core limitation is fixed
+        // upstream; the implementation is kept (correct + upstream parity) for when it is. Guard the whole
+        // transfer anyway so a chunk-copy failure aborts with a logged error instead of crashing the server
+        // tick. NOTE: a failure mid-loop can leave the terrain partially moved.
+        try {
+            // Copy ship chunks from srcLevel to destLevel
+            shipChunks.forEach((final int x, final int z) -> {
+                final LevelChunk srcChunk = srcLevel.getChunk(x, z);
 
-            // This is a hack, but it fixes destLevel being in the wrong state
-            ((VSServerLevel) destLevel).removeChunk(x, z);
+                // This is a hack, but it fixes destLevel being in the wrong state
+                ((VSServerLevel) destLevel).removeChunk(x, z);
 
-            final LevelChunk destChunk = destLevel.getChunk(x, z);
-            ((VSLevelChunk) destChunk).copyChunkFromOtherDimension((VSLevelChunk) srcChunk);
-        });
+                final LevelChunk destChunk = destLevel.getChunk(x, z);
+                ((VSLevelChunk) destChunk).copyChunkFromOtherDimension((VSLevelChunk) srcChunk);
+            });
 
-        // Delete ship chunks from srcLevel
-        shipChunks.forEach((final int x, final int z) -> {
-            final LevelChunk srcChunk = srcLevel.getChunk(x, z);
-            ((VSLevelChunk) srcChunk).clearChunk();
+            // Delete ship chunks from srcLevel
+            shipChunks.forEach((final int x, final int z) -> {
+                final LevelChunk srcChunk = srcLevel.getChunk(x, z);
+                ((VSLevelChunk) srcChunk).clearChunk();
 
-            final ChunkPos chunkPos = srcChunk.getPos();
-            srcLevel.getChunkSource().updateChunkForced(chunkPos, false);
-            ((VSServerLevel) srcLevel).removeChunk(x, z);
-        });
+                final ChunkPos chunkPos = srcChunk.getPos();
+                srcLevel.getChunkSource().updateChunkForced(chunkPos, false);
+                ((VSServerLevel) srcLevel).removeChunk(x, z);
+            });
+        } catch (final Throwable t) {
+            VS$CROSSDIM_LOGGER.error(
+                "Cross-dimension ship terrain transfer {} -> {} failed; aborting (terrain may be partially moved)",
+                srcDimension, destDimension, t);
+        }
     }
 }
