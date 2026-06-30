@@ -369,7 +369,14 @@ public final class ShipTerrainMeshCache {
             // ShipTerrainIrisPipeline (sections are repacked into Iris's TERRAIN vertex format); without
             // shaders they draw through the vanilla moving-block pipeline. frameIrisGpu selects the former.
             frameIrisGpu = gpuActive && shadersOn && ShipTerrainIrisPipeline.ready();
-            frameGpuEffective = gpuActive && (!shadersOn || frameIrisGpu);
+            // Persistent-GPU-buffer terrain is a SHADERS-ON-only path. With no shaderpack active the
+            // hand-rolled flushGpuDraws RenderPass draws ship solid/cutout into MAIN_TARGET outside
+            // vanilla's pass ordering, corrupting the subsequent vanilla translucent/cutout passes ->
+            // glass + redstone render an xray hole. Iris masks it by re-establishing target+depth state
+            // each gbuffer pass, which is exactly why it only appears shaders-off. So shaders-off falls
+            // back to the immediate re-emit path (what the 1.21.1 backport does, confirmed clean); the
+            // shaders-on GPU fast path is unchanged.
+            frameGpuEffective = frameIrisGpu;
             // Whether to bake shaderpack block ids into mc_Entity (emissive/material) -- Iris path + toggle.
             frameBlockIds = frameIrisGpu && VSGameConfig.CLIENT.getRenderShipBlockIds();
             // Re-bake when the bake mode flips. frameGpuEffective catches GPU <-> immediate; frameIrisGpu
