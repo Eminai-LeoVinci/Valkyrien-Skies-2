@@ -220,21 +220,22 @@ public abstract class MixinGameRenderer {
         final Entity cameraEntity =
             this.minecraft.getCameraEntity() == null ? localPlayer : this.minecraft.getCameraEntity();
 
-        // 2.4.80: Standing helm (helm over air -> Eureka standing pose) now uses a
-        // custom 3-stage F5 cycle instead of forcing 3rd-person always:
+        // Ship-mount riders (helm, reconnect auto-seat, sit-down hotkey seat) get a custom
+        // F5 cycle, driven by ShipMountPerspective via the fabric start-of-tick F5 drain:
         //   FIRST_PERSON       -> vanilla 1st person (no ship-mount, normal eye view)
         //   THIRD_PERSON_BACK  -> vanilla 3rd person (no ship-mount; player visible
         //                         via the 2.4.77 shouldRender cull bypass)
-        //   THIRD_PERSON_FRONT -> ship-mounted 3rd person (pulled-back ship view,
-        //                         thirdPersonReverse=false so it's a behind-the-player
-        //                         shot, not the mirrored front view)
-        // Vanilla F5 then cycles back to FIRST_PERSON.
+        //   THIRD_PERSON_FRONT -> vanilla mirrored front view (no ship-mount)
+        //   ship view          -> ship-mounted 3rd person (pulled-back scroll-zoomable
+        //                         ship view; a VIRTUAL slot flagged in ShipMountPerspective
+        //                         on top of THIRD_PERSON_FRONT, because vanilla's
+        //                         CameraType enum can't grow a 4th value)
+        //   Shoulder Surfing   -> only when that mod is installed; then back to FIRST_PERSON.
         //
-        // Background: 2.4.73 forced thirdPerson=true here whenever standing, so the
-        // user couldn't ever go back to true 1st person at the helm. Now that the
-        // 2.4.77 cull bypass makes the player visible in normal vanilla 3rd person,
-        // we don't need the force anymore -- we can give the user the full vanilla
-        // F5 cycle plus the immersive ship-mounted view as the 3rd option.
+        // Background: 2.4.73 forced thirdPerson=true here whenever standing; 2.4.80 gave
+        // the vanilla 3-slot cycle with the ship view REPLACING the front slot. The
+        // virtual slot restores the real front view and lets other camera mods keep
+        // their own perspectives after ours.
         //
         // Sitting helm (chair on a solid block) keeps the original VS2 behavior:
         // always ship-mount, thirdPerson follows the user's F5 state, mirror follows
@@ -253,9 +254,10 @@ public abstract class MixinGameRenderer {
         final CameraType cameraType = this.minecraft.options.getCameraType();
 
         if (standing) {
-            // Only the THIRD_PERSON_FRONT slot of the F5 cycle triggers the immersive
-            // ship-mounted view. The other two slots fall through to vanilla camera.
-            if (cameraType != CameraType.THIRD_PERSON_FRONT) {
+            // Only the virtual ship-view slot of the mounted F5 cycle triggers the immersive
+            // ship-mounted view. Every other slot falls through to the vanilla camera (or to
+            // Shoulder Surfing's, which layers on top of it).
+            if (!org.valkyrienskies.mod.client.ShipMountPerspective.isShipViewEngaged()) {
                 return;
             }
             // Immersive ship third-person view active -> scroll wheel zooms this camera.

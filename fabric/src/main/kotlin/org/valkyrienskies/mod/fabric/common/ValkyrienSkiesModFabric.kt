@@ -40,6 +40,7 @@ import net.minecraft.world.level.block.Block
 import org.valkyrienskies.mod.client.EmptyRenderer
 import org.valkyrienskies.mod.client.ShipCameraZoom
 import org.valkyrienskies.mod.client.ShipDebugRender
+import org.valkyrienskies.mod.client.ShipMountPerspective
 import fuzs.forgeconfigapiport.fabric.api.neoforge.v4.NeoForgeConfigRegistry
 import fuzs.forgeconfigapiport.fabric.api.neoforge.v4.NeoForgeModConfigEvents
 import net.neoforged.fml.config.ModConfig
@@ -348,6 +349,25 @@ class ValkyrienSkiesModFabric : ModInitializer {
             KeyBindingHelper.registerKeyBinding(it)
         }
 
+        // Mounted perspective cycle: while riding a ship mount (helm, reconnect seat, sit-down
+        // hotkey seat) VS2 owns the F5 key. Drain it at START of the client tick -- before
+        // vanilla handleKeybinds (mid-tick) and Shoulder Surfing's tail-of-tick handler ever
+        // see the clicks -- and advance the custom cycle in ShipMountPerspective: first person
+        // -> vanilla back -> vanilla front -> ship view (zoomable) -> Shoulder Surfing (if
+        // installed) -> first person. On foot the key is left alone, so vanilla and other
+        // camera mods behave exactly as without VS2. The screen/overlay gate mirrors vanilla's
+        // handleKeybinds call site so a GUI never eats perspective presses.
+        ClientTickEvents.START_CLIENT_TICK.register { client ->
+            if (client.player?.vehicle is ShipMountingEntity) {
+                ShipMountPerspective.tickMounted()
+                if (client.screen == null && client.overlay == null) {
+                    while (client.options.keyTogglePerspective.consumeClick()) {
+                        ShipMountPerspective.cycleMounted(client)
+                    }
+                }
+            }
+        }
+
         // Always drop back to first person when the player dismounts a ship mount (helm seat),
         // whatever camera the ship view was in, and reset the scroll-zoom for the next mount.
         // Dismounts are server-driven (sneak poll, helm broken, seat killed), so the client
@@ -369,6 +389,7 @@ class ValkyrienSkiesModFabric : ModInitializer {
             val riding = player?.vehicle is ShipMountingEntity
             if (wasRidingShipMount && !riding) {
                 ShipCameraZoom.reset()
+                ShipMountPerspective.reset()
                 if (player != null && !client.options.cameraType.isFirstPerson) {
                     client.options.cameraType = CameraType.FIRST_PERSON
                 }
