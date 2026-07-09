@@ -52,6 +52,12 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
     var driveShipId: Long? = null
     var driveRelPos: Vector3d? = null
 
+    // Hotkey-activated (sit-down key) seat: show the seated prompt ONCE and let the vanilla actionbar
+    // fade it out after a few seconds (exactly like Eureka's cruise-control message), instead of the
+    // reconnect seat's re-send-every-tick persistent prompt. Server-side only, like driveShipId.
+    var fadePrompt = false
+    private var promptSent = false
+
     init {
         // Don't prevent blocks colliding with this entity from being placed
         blocksBuilding = false
@@ -105,8 +111,14 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
         // no-op.
         val world = ship.shipToWorld.transformPosition(Vector3d(rel))
         snapTo(world.x, world.y, world.z, yRot, xRot)
-        // Persistent white prompt above the hotbar (actionbar self-expires, so re-send each tick).
-        (rider as? ServerPlayer)?.displayClientMessage(SEATED_PROMPT, true)
+        // Prompt above the hotbar. Reconnect seats re-send each tick so it stays up until the rider
+        // stands (the actionbar self-expires otherwise); hotkey seats send it once and let it fade.
+        if (!fadePrompt) {
+            (rider as? ServerPlayer)?.displayClientMessage(SEATED_PROMPT, true)
+        } else if (!promptSent) {
+            promptSent = true
+            (rider as? ServerPlayer)?.displayClientMessage(SEATED_PROMPT, true)
+        }
     }
 
     // SERVER: stand the rider up at their exact seated spot with NO fall damage, then remove the seat. [ship] may
@@ -312,9 +324,10 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
          * renders a sitting pose from the first frame. Returns null if entity creation fails.
          */
         @JvmStatic
+        @JvmOverloads
         fun spawnPassengerSeat(
             level: ServerLevel, worldX: Double, worldY: Double, worldZ: Double, yaw: Float, pitch: Float,
-            shipId: Long, relX: Double, relY: Double, relZ: Double
+            shipId: Long, relX: Double, relY: Double, relZ: Double, fadePrompt: Boolean = false
         ): ShipMountingEntity? {
             val seat = ValkyrienSkiesMod.SHIP_MOUNTING_ENTITY_TYPE.create(level, EntitySpawnReason.MOB_SUMMONED)
                 ?: return null
@@ -322,6 +335,7 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
             seat.isController = false
             seat.driveShipId = shipId
             seat.driveRelPos = Vector3d(relX, relY, relZ)
+            seat.fadePrompt = fadePrompt
             seat.entityData.set(IS_PASSENGER_SEAT, true)
             seat.entityData.set(DRIVE_DATA, "$shipId;$relX;$relY;$relZ")
             level.addFreshEntity(seat)

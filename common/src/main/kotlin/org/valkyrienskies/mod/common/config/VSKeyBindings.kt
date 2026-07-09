@@ -23,6 +23,11 @@ object VSKeyBindings {
     val shipDown = register("key.valkyrienskies.ship_down", GLFW.GLFW_KEY_V, "category.valkyrienskies.driving")
     val shipCruise = register("key.valkyrienskies.ship_cruise", GLFW.GLFW_KEY_C, "category.valkyrienskies.driving")
 
+    // Sit down on the ship you're standing on (the reconnect auto-seat's passenger seat, on demand;
+    // SHIFT stands back up). Polled in the platform client-tick handler, which sends
+    // PacketRequestPassengerSeat; the server does all the actually-on-a-ship validation.
+    val shipSeat = register("key.valkyrienskies.ship_seat", GLFW.GLFW_KEY_X, "category.valkyrienskies.driving")
+
     // val shipForward = register("key.valkyrienskies.ship_forward", 87, "category.valkyrienskies.driving")
     // val shipBack = register("key.valkyrienskies.ship_back", 83, "category.valkyrienskies.driving")
     // val shipLeft = register("key.valkyrienskies.ship_left", 65, "category.valkyrienskies.driving")

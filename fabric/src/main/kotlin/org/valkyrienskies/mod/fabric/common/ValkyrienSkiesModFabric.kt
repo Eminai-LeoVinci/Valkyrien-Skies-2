@@ -62,6 +62,8 @@ import org.valkyrienskies.mod.common.entity.ShipMountingEntity
 import org.valkyrienskies.mod.common.hooks.VSGameEvents
 import org.valkyrienskies.mod.common.item.ShipAssemblerItem
 import org.valkyrienskies.mod.common.item.ShipCreatorItem
+import org.valkyrienskies.mod.common.networking.PacketRequestPassengerSeat
+import org.valkyrienskies.mod.common.vsCore
 import org.valkyrienskies.mod.common.world.VSTicketType
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
@@ -353,6 +355,17 @@ class ValkyrienSkiesModFabric : ModInitializer {
         var wasRidingShipMount = false
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             val player = client.player
+
+            // Sit-down hotkey (X): ask the server for a passenger seat on the ship the player is
+            // standing on. Only the cheap gates live here (in-world, not already riding anything);
+            // the on-a-ship check is the server's (PacketRequestPassengerSeat handler), which
+            // silently ignores presses off-ship. consumeClick drains all queued presses.
+            while (VSKeyBindings.shipSeat.get().consumeClick()) {
+                if (player != null && !player.isPassenger) {
+                    with(vsCore.simplePacketNetworking) { PacketRequestPassengerSeat().sendToServer() }
+                }
+            }
+
             val riding = player?.vehicle is ShipMountingEntity
             if (wasRidingShipMount && !riding) {
                 ShipCameraZoom.reset()

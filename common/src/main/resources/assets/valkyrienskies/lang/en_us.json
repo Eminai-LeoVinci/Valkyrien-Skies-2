@@ -12,6 +12,7 @@
   "key.valkyrienskies.ship_cruise": "Cruise",
   "key.valkyrienskies.ship_down": "Descend",
   "key.valkyrienskies.ship_up": "Ascend",
+  "key.valkyrienskies.ship_seat": "Sit Down (on Ship)",
   "key.valkyrienskies.ship_gpu_render": "Toggle Ship GPU Render",
 
   "block.valkyrienskies.test_chair": "Debug Chair",

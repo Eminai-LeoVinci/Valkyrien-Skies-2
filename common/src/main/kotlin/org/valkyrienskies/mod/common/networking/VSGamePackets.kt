@@ -30,6 +30,7 @@ object VSGamePackets {
 
     fun register() = with(vsCore.simplePacketNetworking) {
         PacketPlayerDriving::class.register()
+        PacketRequestPassengerSeat::class.register()
         PacketStopChunkUpdates::class.register()
         PacketRestartChunkUpdates::class.register()
         PacketSyncVSEntityTypes::class.register()
@@ -56,6 +57,36 @@ object VSGamePackets {
                 attachment.upImpulse = driving.impulse.y
                 attachment.sprintOn = driving.sprint
                 attachment.cruise = driving.cruise
+            }
+        }
+
+        // Sit-down hotkey: seat the sender on the ship they're standing on -- the same passenger seat
+        // as the reconnect auto-seat (SHIFT stands), but with the fading one-shot prompt. Everything
+        // is validated server-side from the sender's OWN ship carry (dragging info), mirroring what
+        // the logout save (MixinServerPlayer.vs$rememberLastShip) trusts; the packet carries nothing.
+        // execute{} hops to the main thread for the entity spawn (no-op if already on it).
+        PacketRequestPassengerSeat::class.registerServerHandler { _, iPlayer ->
+            val player = (iPlayer as MinecraftPlayer).player as ServerPlayer
+            val level = player.level() as ServerLevel
+            level.server.execute {
+                if (player.isRemoved || player.isPassenger)
+                    return@execute
+                val dragInfo = (player as IEntityDraggingInformationProvider).draggingInformation
+                if (!dragInfo.isEntityBeingDraggedByAShip())
+                    return@execute // Not standing on a ship
+                val shipId = dragInfo.lastShipStoodOn ?: return@execute
+                val ship = level.shipObjectWorld.allShips.getById(shipId) ?: return@execute
+                // Prefer the carry's authoritative ship-space position (same as the logout save).
+                val rel = dragInfo.bestRelativeEntityPosition()?.let { Vector3d(it) }
+                    ?: ship.worldToShip.transformPosition(Vector3d(player.x, player.y, player.z))
+                val worldPos = ship.shipToWorld.transformPosition(Vector3d(rel))
+                val seat = ShipMountingEntity.spawnPassengerSeat(
+                    level, worldPos.x, worldPos.y, worldPos.z, player.yRot, player.xRot,
+                    shipId, rel.x, rel.y, rel.z, true
+                ) ?: return@execute
+                if (!player.startRiding(seat, true, true)) {
+                    seat.kill(level)
+                }
             }
         }
 
