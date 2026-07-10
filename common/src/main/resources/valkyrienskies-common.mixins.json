@@ -40,6 +40,7 @@
     "feature.clip_replace.MixinBlockGetter",
     "feature.clip_replace.MixinClipContext",
     "feature.conduit_fix.ConduitMixin",
+    "feature.config_recipes.MixinRecipeManager",
     "feature.dismount_dead_entities.MixinLivingEntity",
     "feature.distance_replace.MixinEntity",
     "feature.drag_standing_mobs.MixinLivingEntity",
