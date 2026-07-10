@@ -95,9 +95,10 @@ public abstract class MixinServerPlayer extends Player {
         // 1.21.1 has no 3-arg startRiding; the 2-arg (force) variant is the right one for a forced seat-mount.
         if (startRiding(seat, true)) {
             // Insurance: the unloaded-ship movement guard must not snap the seat/rider during the load grace.
-            // DST stamps grace with the level's gameTime tick (NOT nanoTime); the entry expires after
-            // SPAWN_GRACE_PERIOD_TICKS (~100 ticks / 5s) in EntityShipCollisionUtils.isInSpawnGracePeriod.
-            EntityShipCollisionUtils.markShipAsRecentlySpawned(ship.getId(), slevel.getGameTime());
+            // DST stamps grace with the level's gameTime tick (NOT nanoTime). LONG window (~10s): ship chunks
+            // can take several seconds to stream in after a relog, and an expired grace means
+            // isCollidingWithUnloadedShips resumes cancelling ALL entity movement over the still-loading ship.
+            EntityShipCollisionUtils.markShipAsRecentlySpawned(ship.getId(), slevel.getGameTime(), 200L);
         } else {
             seat.kill();
         }

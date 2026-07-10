@@ -126,9 +126,11 @@ object ShipAssembler {
         toShip.isStatic = fromShip == null || fromShip.isStatic
 
         // Mark as recently spawned immediately so player movement packets processed
-        // during chunk loading don't treat this new ship as "unloaded".
+        // during chunk loading don't treat this new ship as "unloaded". SHORT window (~2s):
+        // this same grace drives the mobs-only assembly gravity-hold (shouldHoldGravity), which
+        // should release quickly once the new ship's chunks are in.
         EntityShipCollisionUtils.markShipAsRecentlySpawned(
-            toShip.id, level.gameTime
+            toShip.id, level.gameTime, 40L
         )
 
         val (wasSuccessful, _, toCenter) = moveBlocksFromTo(level, blocks, fromShip, toShip, minB, maxB, toShip.chunkClaim.getCenterBlockCoordinates(level.yRange, Vector3i()))
@@ -412,9 +414,10 @@ object ShipAssembler {
 
             // Mark ship as recently spawned immediately so that player movement packets
             // processed during managedBlock (in the preload phase) don't treat this new
-            // ship as "unloaded" and freeze the player.
+            // ship as "unloaded" and freeze the player. SHORT window (~2s) — see the
+            // assembleToShip call site for why assembly wants the quick release.
             EntityShipCollisionUtils.markShipAsRecentlySpawned(
-                toShip.id, level.gameTime
+                toShip.id, level.gameTime, 40L
             )
 
             val toCenter = toShip.chunkClaim.getCenterBlockCoordinates(level.yRange, Vector3i())

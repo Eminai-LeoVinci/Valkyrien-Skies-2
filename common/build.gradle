@@ -104,7 +104,6 @@ sourceSets {
             exclude "org/valkyrienskies/mod/mixin/accessors/client/render/chunk/**"
             exclude "org/valkyrienskies/mod/mixin/accessors/server/level/ChunkHolderAccessor.java"
             exclude "org/valkyrienskies/mod/mixin/feature/enchantment_table/**"
-            exclude "org/valkyrienskies/mod/mixin/feature/ai/node_evaluator/**"
             exclude "org/valkyrienskies/mod/mixin/feature/sculk/**"
             exclude "org/valkyrienskies/mod/mixin/mod_compat/alex_caves/**"
         }
