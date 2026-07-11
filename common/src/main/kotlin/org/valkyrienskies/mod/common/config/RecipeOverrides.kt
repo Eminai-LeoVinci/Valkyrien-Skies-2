@@ -201,7 +201,7 @@ object RecipeOverrides {
     // can edit this file (or drop in their own overhauls) and /reload to change them.
 
     private val SHIP_HELM_WOODS = listOf(
-        "oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "crimson", "warped"
+        "oak", "spruce", "birch", "pale_oak", "jungle", "acacia", "dark_oak", "crimson", "warped"
     )
     private val BALLOON_COLORS = listOf(
         "white", "light_gray", "gray", "black", "red", "orange", "yellow", "lime",
@@ -260,17 +260,17 @@ object RecipeOverrides {
                 "\"remove\" to disable it. Edit then /reload."
         )
 
-        // Ship helm, one per wood:  B F B   F g F   L h L
-        // (B=iron bars, F=wood fence [picks the wood type — all three must match], g=gold ingot,
-        //  L=lodestone, h=heart of the sea)
+        // Ship helm, one per wood:  B F B   F h F   S L S
+        // (B=iron bars, F=wood fence [picks the wood type — all three must match], h=heart of the sea,
+        //  S=wood slab [matches the wood type], L=lodestone)
         for (w in SHIP_HELM_WOODS) {
             root.add(
                 "vs_eureka:${w}_ship_helm",
                 shaped(
                     listOf(
                         s("minecraft:iron_bars"), s("minecraft:${w}_fence"), s("minecraft:iron_bars"),
-                        s("minecraft:${w}_fence"), s("minecraft:gold_ingot"), s("minecraft:${w}_fence"),
-                        s("minecraft:lodestone"), s("minecraft:heart_of_the_sea"), s("minecraft:lodestone")
+                        s("minecraft:${w}_fence"), s("minecraft:heart_of_the_sea"), s("minecraft:${w}_fence"),
+                        s("minecraft:${w}_slab"), s("minecraft:lodestone"), s("minecraft:${w}_slab")
                     ),
                     "vs_eureka:${w}_ship_helm", 1, "ship_helm"
                 )
@@ -291,7 +291,7 @@ object RecipeOverrides {
             )
         )
 
-        // Floater = 4:  W B W   B _ B   W B W   (W=any wooden slab, B=barrel)
+        // Floater = 8:  W B W   B _ B   W B W   (W=any wooden slab, B=barrel)
         root.add(
             "vs_eureka:floater",
             shaped(
@@ -300,7 +300,7 @@ object RecipeOverrides {
                     s("minecraft:barrel"), none(), s("minecraft:barrel"),
                     s("#minecraft:wooden_slabs"), s("minecraft:barrel"), s("#minecraft:wooden_slabs")
                 ),
-                "vs_eureka:floater", 4
+                "vs_eureka:floater", 8
             )
         )
 
