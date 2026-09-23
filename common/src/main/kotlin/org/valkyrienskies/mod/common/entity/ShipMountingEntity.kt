@@ -5,6 +5,8 @@ import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundAddEntityPacket
+import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.Entity
 import net.minecraft.world.entity.EntityType
 import net.minecraft.world.entity.LivingEntity
@@ -67,6 +69,35 @@ open class ShipMountingEntity(type: EntityType<ShipMountingEntity>, level: Level
             return livingEntity.position()
         }
         return super.getDismountLocationForPassenger(livingEntity)
+    }
+
+    /**
+     * Tell everyone tracking this seat that its riders changed.
+     *
+     * After spawn, [ClientboundSetPassengersPacket] only goes out from `ServerEntity.sendChanges`, which
+     * `ChunkMap.tick()` reaches only when the entity changed section or its chunk is in entity-ticking
+     * range. A seat parked in the shipyard never changes section, and it is spawned before its rider
+     * mounts, so if that tracker does not run on the tick of the mount then the pairing burst everyone
+     * already holds says the seat is empty. Nobody watching is told about the mount, their client has no
+     * vehicle for that player, and the ship-mount render path cannot engage.
+     *
+     * Saying it here, where the passenger list actually changes, means the announcement never depends on
+     * the tracker ticking, and it covers every seat and every mount path. Seats whose tracker does run
+     * already worked; they now get one duplicate packet per mount, which the client applies idempotently.
+     */
+    private fun announceRiders() {
+        val lvl = level() as? ServerLevel ?: return
+        lvl.chunkSource.chunkMap.broadcast(this, ClientboundSetPassengersPacket(this))
+    }
+
+    override fun addPassenger(passenger: Entity) {
+        super.addPassenger(passenger)
+        announceRiders()
+    }
+
+    override fun removePassenger(passenger: Entity) {
+        super.removePassenger(passenger)
+        announceRiders()
     }
 
     override fun readAdditionalSaveData(compound: CompoundTag) {}
